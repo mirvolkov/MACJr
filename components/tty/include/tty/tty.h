@@ -1,0 +1,51 @@
+/*
+ * Top-level TTY API: ties the HAL display, the line discipline (termios-like
+ * canonical/raw input handling), and the symbolic console together into a
+ * single object that behaves like a Linux /dev/ttyN from the caller's side
+ * (write() sends process output through the console, read() blocks for a
+ * completed line in canonical mode, kbd_inject() feeds in raw keyboard bytes).
+ */
+#ifndef MACJR_TTY_H
+#define MACJR_TTY_H
+
+#include "esp32s3hal/display.h"
+#include "tty/termios.h"
+#include "tty/vc.h"
+
+#include <stddef.h>
+#include <sys/types.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct macjr_tty macjr_tty_t;
+
+/* Allocate and initialize a tty sized to fit hal's pixel geometry given a
+ * glyph_w x glyph_h font cell. Returns NULL on allocation/RTOS-object failure. */
+macjr_tty_t *macjr_tty_create(macjr_hal_display_t *hal, int glyph_w, int glyph_h);
+/* Free a tty and all of its FreeRTOS objects/buffers. */
+void macjr_tty_destroy(macjr_tty_t *tty);
+
+/* Read one line discipline result: blocks for a completed line in canonical
+ * mode, or returns raw bytes per VMIN/VTIME semantics in raw mode. */
+ssize_t macjr_tty_read(macjr_tty_t *tty, void *buf, size_t len);
+/* Write process output (e.g. shell/app text, ANSI escapes) into the console. */
+ssize_t macjr_tty_write(macjr_tty_t *tty, const void *buf, size_t len);
+
+/* Keyboard driver calls this (task context recommended). */
+void macjr_kbd_inject(macjr_tty_t *tty, const uint8_t *data, size_t len);
+
+/* After writes / injects, call periodically to push dirty cells to the panel. */
+void macjr_display_flush(macjr_tty_t *tty);
+
+/* Accessors for the underlying console/termios/winsize state. */
+macjr_vc_t *macjr_tty_vc(macjr_tty_t *tty);
+struct macjr_termios *macjr_tty_termios(macjr_tty_t *tty);
+struct macjr_winsize *macjr_tty_winsize(macjr_tty_t *tty);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
