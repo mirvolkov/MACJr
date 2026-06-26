@@ -1,15 +1,15 @@
 /*
  * MACJr demo entry point: brings up the ST7789-backed display HAL and the
- * macjr_tty TTY stack, then exercises writes, ANSI colors, simulated
- * keyboard input, and the pseudographics font page before settling into a
- * live uptime-counter redraw loop.
+ * macjr_tty TTY stack, then draws a single static screen -- a recreation of
+ * a classic Turbo C IDE -- and leaves it on screen.
  */
 #include <stdio.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "esp_flash.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 
 #include "tty/tty.h"
@@ -17,67 +17,151 @@
 
 static const char *TAG = "macjr_demo";
 
-/* Render the symbolic console grid to the log so the result is observable. */
-static void dump_vc(macjr_tty_t *tty) {
-  macjr_vc_t *vc = macjr_tty_vc(tty);
-  char line[160];
-  ESP_LOGI(TAG, "console %dx%d, cursor (%d,%d):", vc->cols, vc->rows, vc->cursor_r, vc->cursor_c);
-  for (int r = 0; r < vc->rows; r++) {
-    int n = 0;
-    int last = -1;
-    /* find last non-blank column so we don't log a wall of spaces */
-    for (int c = 0; c < vc->cols; c++) {
-      uint16_t ch = vc->cells[r * vc->cols + c].ch;
-      if (ch != 0 && ch != ' ') {
-        last = c;
-      }
-    }
-    if (last < 0) {
-      continue; /* skip empty rows */
-    }
-    for (int c = 0; c <= last && n < (int)sizeof(line) - 1; c++) {
-      uint16_t ch = vc->cells[r * vc->cols + c].ch;
-      line[n++] = (ch >= 32 && ch < 127) ? (char)ch : ' ';
-    }
-    line[n] = '\0';
-    ESP_LOGI(TAG, "row %2d | %s", r, line);
+/* Position the cursor, set an SGR fg;bg pair, then write raw bytes (may
+ * include 128-255 pseudographics glyphs, not just ASCII). 1-indexed row/col
+ * to match the CUP escape (\x1b[row;colH). */
+static void put(macjr_tty_t *tty, int row, int col, const char *sgr, const void *data, size_t len) {
+  char esc[32];
+  int n = snprintf(esc, sizeof(esc), "\x1b[%d;%dH\x1b[%sm", row, col, sgr);
+  macjr_tty_write(tty, esc, (size_t)n);
+  macjr_tty_write(tty, data, len);
+}
+
+/* Console is a fixed 40x15 grid; the layout below is authored directly at
+ * that size -- no design/view scaling. */
+#define IDE_COLS 40
+#define IDE_ROWS 15
+
+/* Double- and single-line box-drawing glyphs, CP737 layout
+ * (components/tty/src/font_builtin.c). The editor window uses the double
+ * line; the "Linking" dialog uses the single line, like the original. */
+#define DBL_TL 201 /* ╔ */
+#define DBL_TR 187 /* ╗ */
+#define DBL_BL 200 /* ╚ */
+#define DBL_BR 188 /* ╝ */
+#define DBL_H 205  /* ═ */
+#define DBL_V 186  /* ║ */
+#define SGL_TL 218 /* ┌ */
+#define SGL_TR 191 /* ┐ */
+#define SGL_BL 192 /* └ */
+#define SGL_BR 217 /* ┘ */
+#define SGL_H 196  /* ─ */
+#define SGL_V 179  /* │ */
+
+/* Left-pad/truncate text to an exact field width with spaces, then put(). */
+static void field_at(macjr_tty_t *tty, int row, int col, const char *sgr, int width, const char *text) {
+  char field[IDE_COLS + 1];
+  snprintf(field, sizeof(field), "%-*.*s", width, width, text);
+  put(tty, row, col, sgr, field, (size_t)width);
+}
+
+/* Draw a horizontal border line (corner, h-line glyphs, corner) `width`
+ * cells wide starting at (row, col), with an optional label centered into
+ * the line (e.g. a window's title tab). */
+static void border_row(macjr_tty_t *tty, int row, int col, int width, const char *sgr, uint8_t left,
+                        uint8_t right, uint8_t h, const char *label_sgr, const char *label) {
+  uint8_t buf[IDE_COLS];
+  buf[0] = left;
+  memset(buf + 1, h, (size_t)(width - 2));
+  buf[width - 1] = right;
+  put(tty, row, col, sgr, buf, (size_t)width);
+  if (label && *label) {
+    int len = (int)strlen(label);
+    int off = (width - 2 - len) / 2;
+    put(tty, row, col + 1 + off, label_sgr, label, (size_t)len);
   }
 }
 
 /*
- * Draw the 128-255 pseudographics page (box drawing, shades, blocks, arrows,
- * shapes, card suits -- see components/tty/src/font_builtin.c) as a
- * bordered 16x8 grid, framed with the box-drawing glyphs from that same page.
+ * One-shot, static recreation of a classic Turbo C IDE screen, authored
+ * directly at the console's fixed 40x15 size: a top menu bar, a
+ * double-line-bordered editor window with an "Edit" tab centered in its
+ * top border, and a single-line-bordered "Linking" status dialog centered
+ * on top of it. There is no animation or redraw loop, it is drawn once and
+ * left on screen.
  */
-static void dump_pseudographics(macjr_tty_t *tty) {
-  uint8_t row[18];
-  static const char crlf[] = "\r\n";
+static void dump_turboc_ide(macjr_tty_t *tty) {
+  static const char *MENU_SGR = "97;44";       /* bright white on blue: menu bar */
+  static const char *BORDER_SGR = "96;40";     /* cyan on black: window border */
+  static const char *TAB_SGR = "30;46";        /* black on cyan: "Edit" tab */
+  static const char *YELLOW_SGR = "93;40";     /* bright yellow on black: code */
+  static const char *WHITE_SGR = "97;40";      /* bright white on black: braces */
+  static const char *DLG_BORDER_SGR = "30;42"; /* black on green: dialog frame */
+  static const char *DLG_TEXT_SGR = "96;40";   /* cyan on black: dialog fields */
+  static const char *DLG_OK_SGR = "97;44";     /* white on blue: "Success" bar */
 
-  row[0] = 146; /* down-right corner */
-  for (int i = 1; i <= 16; i++) {
-    row[i] = 144; /* horizontal */
-  }
-  row[17] = 147; /* down-left corner */
-  macjr_tty_write(tty, (const char *)row, sizeof(row));
-  macjr_tty_write(tty, crlf, sizeof(crlf) - 1);
+  /* row 1: top menu bar */
+  field_at(tty, 1, 1, MENU_SGR, IDE_COLS, "File Edit Run Compile Options");
 
-  for (int hi = 8; hi <= 15; hi++) {
-    row[0] = 145; /* vertical */
-    for (int lo = 0; lo < 16; lo++) {
-      row[1 + lo] = (uint8_t)(hi * 16 + lo);
-    }
-    row[17] = 145; /* vertical */
-    macjr_tty_write(tty, (const char *)row, sizeof(row));
-    macjr_tty_write(tty, crlf, sizeof(crlf) - 1);
+  /* row 2: editor window top border, "Edit" tab centered in it */
+  border_row(tty, 2, 1, IDE_COLS, BORDER_SGR, DBL_TL, DBL_TR, DBL_H, TAB_SGR, "Edit");
+
+  /* rows 3-14: editor body -- side borders plus a tiny C source file */
+  const struct {
+    const char *sgr;
+    const char *text;
+  } body[IDE_ROWS - 3] = {
+      {YELLOW_SGR, " #include <stdio.h>"},
+      {YELLOW_SGR, ""},
+      {YELLOW_SGR, " int main(int argc, char *argv[])"},
+      {WHITE_SGR, " {"},
+      {YELLOW_SGR, "     printf(\"hello\\n\");"},
+      {YELLOW_SGR, ""},
+      {YELLOW_SGR, ""},
+      {YELLOW_SGR, ""},
+      {YELLOW_SGR, ""},
+      {YELLOW_SGR, ""},
+      {WHITE_SGR, " }"},
+      {YELLOW_SGR, ""},
+  };
+  for (int i = 0; i < IDE_ROWS - 3; i++) {
+    int row = 3 + i;
+    put(tty, row, 1, BORDER_SGR, &(uint8_t){DBL_V}, 1);
+    field_at(tty, row, 2, body[i].sgr, IDE_COLS - 2, body[i].text);
+    put(tty, row, IDE_COLS, BORDER_SGR, &(uint8_t){DBL_V}, 1);
   }
 
-  row[0] = 148; /* up-right corner */
-  for (int i = 1; i <= 16; i++) {
-    row[i] = 144; /* horizontal */
+  /* row 15: editor window bottom border */
+  border_row(tty, IDE_ROWS, 1, IDE_COLS, BORDER_SGR, DBL_BL, DBL_BR, DBL_H, NULL, NULL);
+
+  /*
+   * "Linking" build-status dialog: single-line border, centered over the
+   * editor window, painted last so it overlaps whatever code text is
+   * underneath it -- same as a real modal dialog popping up mid-build.
+   */
+  enum { DLG_W = 22, DLG_H = 7 };
+  int dlg_col = (IDE_COLS - DLG_W) / 2 + 1;
+  int dlg_row = (IDE_ROWS - DLG_H) / 2 + 1;
+
+  border_row(tty, dlg_row, dlg_col, DLG_W, DLG_BORDER_SGR, SGL_TL, SGL_TR, SGL_H, DLG_BORDER_SGR, "Linking");
+
+  uint32_t flash_bytes = 0;
+  esp_flash_get_size(NULL, &flash_bytes);
+  char flash_line[20];
+  snprintf(flash_line, sizeof(flash_line), "Flash: %luK", (unsigned long)(flash_bytes / 1024));
+
+  char mem_line[20];
+  snprintf(mem_line, sizeof(mem_line), "Mem: %luK", (unsigned long)(esp_get_free_heap_size() / 1024));
+
+  const char *dlg_lines[] = {
+      "EXE: C:\\NONAME.EXE",
+      "Link: CS.LIB",
+      flash_line,
+      mem_line,
+  };
+  for (int i = 0; i < 4; i++) {
+    int row = dlg_row + 1 + i;
+    put(tty, row, dlg_col, DLG_BORDER_SGR, &(uint8_t){SGL_V}, 1);
+    field_at(tty, row, dlg_col + 1, DLG_TEXT_SGR, DLG_W - 2, dlg_lines[i]);
+    put(tty, row, dlg_col + DLG_W - 1, DLG_BORDER_SGR, &(uint8_t){SGL_V}, 1);
   }
-  row[17] = 149; /* up-left corner */
-  macjr_tty_write(tty, (const char *)row, sizeof(row));
-  macjr_tty_write(tty, crlf, sizeof(crlf) - 1);
+
+  int ok_row = dlg_row + 5;
+  put(tty, ok_row, dlg_col, DLG_BORDER_SGR, &(uint8_t){SGL_V}, 1);
+  field_at(tty, ok_row, dlg_col + 1, DLG_OK_SGR, DLG_W - 2, "Success");
+  put(tty, ok_row, dlg_col + DLG_W - 1, DLG_BORDER_SGR, &(uint8_t){SGL_V}, 1);
+
+  border_row(tty, dlg_row + DLG_H - 1, dlg_col, DLG_W, DLG_BORDER_SGR, SGL_BL, SGL_BR, SGL_H, NULL, NULL);
 }
 
 void app_main(void) {
@@ -97,63 +181,15 @@ void app_main(void) {
   struct macjr_winsize *ws = macjr_tty_winsize(tty);
   ESP_LOGI(TAG, "tty up: %ux%u chars on %ux%u px", ws->ws_col, ws->ws_row, ws->ws_xpixel, ws->ws_ypixel);
 
-  /* --- demo: write some output, including a few ANSI SGR color escapes --- */
-  const char *banner =
-      "MACJr TTY demo\r\n"
-      "\x1b[32mgreen\x1b[0m \x1b[31mred\x1b[0m \x1b[1;34mbold blue\x1b[0m\r\n"
-      "login: ";
-  macjr_tty_write(tty, banner, strlen(banner));
+  /* Static, one-shot recreation of a classic Turbo C IDE screen. No
+   * keyboard input, no redraw loop -- hide the cursor, draw it once, flush
+   * once, and leave it on screen. */
+  const char *clear = "\x1b[2J\x1b[?25l";
+  macjr_tty_write(tty, clear, strlen(clear));
+  dump_turboc_ide(tty);
 
-  /* --- demo: simulate keyboard input through the line discipline --- */
-  /* With ICANON+ECHO on, injected bytes are echoed and a line is buffered. */
-  const char *typed = "root\n";
-  macjr_kbd_inject(tty, (const uint8_t *)typed, strlen(typed));
-
-  /* Push everything that changed to the panel. */
   int64_t flush_start_us = esp_timer_get_time();
   macjr_display_flush(tty);
   int64_t flush_us = esp_timer_get_time() - flush_start_us;
   ESP_LOGI(TAG, "display flush took %lld.%03lld ms", flush_us / 1000, flush_us % 1000);
-
-  /* Read the completed line back, the way a shell/app would. */
-  char in[64];
-  ssize_t got = macjr_tty_read(tty, in, sizeof(in) - 1);
-  if (got > 0) {
-    in[got] = '\0';
-    /* strip trailing newline for clean logging */
-    if (got > 0 && in[got - 1] == '\n') {
-      in[got - 1] = '\0';
-    }
-    ESP_LOGI(TAG, "read %d bytes from tty: \"%s\"", (int)got, in);
-  } else {
-    ESP_LOGW(TAG, "tty read returned %d", (int)got);
-  }
-
-  dump_vc(tty);
-
-  /* --- demo: show off the pseudographics page added to the builtin font --- */
-  const char *pg_banner = "\r\npseudographics:\r\n";
-  macjr_tty_write(tty, pg_banner, strlen(pg_banner));
-  dump_pseudographics(tty);
-  macjr_display_flush(tty);
-
-  /* --- live: print uptime on the line right after the login prompt, --- */
-  /* --- redrawn (invalidated) at 24fps for the lifetime of the device. --- */
-  macjr_vc_t *vc = macjr_tty_vc(tty);
-  int uptime_row = vc->cursor_r;
-  const TickType_t frame_ticks = pdMS_TO_TICKS(1000 / 24);
-
-  while (1) {
-    int64_t us = esp_timer_get_time();
-    int64_t secs = us / 1000000;
-    int64_t ms = (us / 1000) % 1000;
-
-    char line[64];
-    int n = snprintf(line, sizeof(line), "\x1b[%d;1H\x1b[Kuptime: %lld.%03llds",
-                      uptime_row + 1, secs, ms);
-    macjr_tty_write(tty, line, (size_t)n);
-    macjr_display_flush(tty);
-
-    vTaskDelay(frame_ticks);
-  }
 }

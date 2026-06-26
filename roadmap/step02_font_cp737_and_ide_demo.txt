@@ -1,0 +1,88 @@
+Step 02 — Bold CP737 font + Turbo C IDE demo screen
+Date: 2026-06-26
+Goal: Replace the placeholder pseudographics font page with a real CP737
+(Greek DOS) layout, make the whole font bolder, and rebuild the demo into a
+single fixed 40x15 "screen" recreating a classic Turbo C IDE, styled to
+match a reference Borland C screenshot.
+
+===========================================================================
+WHAT WAS BUILT
+===========================================================================
+
+1. components/tty/src/font_builtin.c — regenerated 8x16 font table
+
+   - 0x00-0x7F (ASCII): kept the existing glyph shapes, but bolded every
+     printable one by ORing each row with itself shifted right one pixel
+     (row | row>>1), thickening every stroke by ~1px.
+   - 0x80-0xAF, 0xE0-0xFE: replaced the old ad-hoc pseudographics (arrows,
+     card suits, shapes) with the real CP737 layout — Greek uppercase and
+     lowercase letters plus math symbols (±, ≥, ≤, ÷, ≈, °, √, etc).
+     Rendered from Menlo Bold via PIL (supersampled, thresholded to 1bpp)
+     since hand-encoding 256 accurate Greek glyph bitmaps isn't practical.
+   - 0xB0-0xDF: box-drawing/shade/block glyphs, procedurally generated to
+     match CP737's single/double-line layout, with 2px-thick strokes for
+     the same bold look (light/medium/dark shade, single and double line
+     box-drawing, half/full blocks).
+   - 0xFF: CP737 NBSP, rendered blank.
+   - Generation done via a throwaway Python script (PIL + procedural box
+     drawing), not checked into the repo — output is the static C array.
+
+   components/tty/src/hal_blit.c
+   - Minor ANSI palette fix: color index 3 (yellow) corrected from
+     0xaaaa00 to the standard CGA/VGA brown/orange 0xaa5500 (bright
+     yellow stays at 0xffff55 — only the dim variant was wrong).
+
+2. main/MACJr.c — demo rewritten as one static 40x15 "screen"
+
+   - Console is a fixed 40x15 grid (320x240 panel, 8x16 glyphs — noted in
+     CLAUDE.md). The old demo built an 80x25 Turbo C layout and cropped it
+     down to 40x15 via a clip_put/clip_str/clip_field/clip_hline viewport;
+     that machinery is gone. Everything is now authored directly at 40x15.
+   - dump_vc (log dump of the VC grid) and dump_pseudographics (font-page
+     grid dump) demo helpers were removed, along with the banner/color
+     demo and the simulated keyboard injection (macjr_kbd_inject) + tty
+     read-back — the device now goes straight from init to drawing the
+     one screen, no keyboard input is expected.
+   - dump_turboc_ide draws:
+       row 1:    menu bar ("File Edit Run Compile Options"), bright white
+                 on blue, matching the reference Borland C screenshot.
+       row 2-15: editor window, double-line CP737 border (╔═╗║╚╝), with
+                 an "Edit" tab centered in the top border (black on cyan).
+                 Interior: a tiny C source listing (yellow on black, white
+                 braces), cyan border lines.
+       overlay:  a single-line-bordered (┌─┐│└┘) "Linking" dialog, green
+                 frame / black interior, centered over the editor window
+                 and painted last so it overlaps the code text underneath
+                 — same as Borland's real build-status popup.
+   - Added a generic border_row() helper (corner/h-line/corner plus an
+     optional centered label) used for both the "Edit" tab and the
+     "Linking" title, replacing the old per-window clip_* helpers.
+   - The dialog's stat lines are now partly live instead of fully static:
+       "Flash: <N>K" — esp_flash_get_size(NULL, &bytes), real chip size.
+       "Mem: <N>K"   — esp_get_free_heap_size(), real free heap.
+     (EXE/Link lines stay as flavor text, like the original Borland UI.)
+
+3. main/CMakeLists.txt
+   - Added `spi_flash` to REQUIRES so esp_flash_get_size links.
+
+4. CLAUDE.md
+   - Noted the fixed 40x15 text-mode size (320x240 screen / 8x16 glyphs)
+     as a standing constraint for future layout work.
+
+===========================================================================
+HOW IT WORKS
+===========================================================================
+
+  app_main()
+      → display_hal_init() + macjr_tty_create(hal, 8, 16)
+      → ESC[2J ESC[?25l (clear screen, hide cursor)
+      → dump_turboc_ide(tty): menu bar + double-line editor window +
+        single-line "Linking" dialog (flash/heap size queried live)
+      → macjr_display_flush(tty) — single flush, no redraw loop
+
+===========================================================================
+NEXT STEPS (PLANNED)
+===========================================================================
+  - Keyboard driver (physical HW or USB HID) wired to macjr_kbd_inject
+  - Shell / REPL skeleton reading from macjr_tty_read
+  - Filesystem layer (SPIFFS or FAT on flash)
