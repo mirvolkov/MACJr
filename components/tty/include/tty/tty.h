@@ -8,7 +8,7 @@
 #ifndef MACJR_TTY_H
 #define MACJR_TTY_H
 
-#include "esp32s3hal/display.h"
+#include "tty/hal_display.h"
 #include "tty/termios.h"
 #include "tty/vc.h"
 

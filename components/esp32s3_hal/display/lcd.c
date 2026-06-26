@@ -112,7 +112,10 @@ esp_err_t lcd_init(void)
     ESP_LOGI(TAG, "Installing ST7789 panel driver");
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = ST7789_RST,
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        /* This module's panel is wired BGR, not RGB -- with RGB here, red
+           and blue come out swapped (confirmed against the macOS/SDL host
+           build, which renders the same RGB888 values straight). */
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
         .bits_per_pixel = 16,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel_handle));

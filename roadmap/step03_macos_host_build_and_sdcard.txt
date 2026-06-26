@@ -1,0 +1,98 @@
+Step 03 — macOS/SDL2 host build, portable display HAL, sdcard HAL
+Date: 2026-06-26
+Goal: Let the tty/vc/font/demo-screen stack run on a developer machine
+without ESP32 hardware, clean up a platform layering violation that leaked
+into the portable tty component, reorganize the per-platform HAL components
+for room to grow, and add an SD card HAL for the ESP32 target.
+
+===========================================================================
+WHAT WAS BUILT
+===========================================================================
+
+1. macOS/SDL2 host build (macos/, components/macos_hal/)
+   - macos/CMakeLists.txt: standalone plain-CMake project (not wired into
+     the ESP-IDF root CMakeLists.txt, which assumes the IDF toolchain).
+     Builds the same tty/vc/font/demo-screen sources unmodified into
+     macjr_host, linked against SDL2 + pthreads.
+       cmake -S macos -B build-host && cmake --build build-host
+       ./build-host/macjr_host
+   - components/macos_hal/display/display_hal.c — SDL2-backed
+     macjr_hal_display_t: opens a window sized to the panel, renders
+     fill_rect/blit_1bpp_mask into an SDL texture, pumps the event loop so
+     the window stays responsive and closes cleanly on SDL_QUIT.
+   - components/tty/src/host_rtos_shim.h — tiny pthreads-backed stand-in
+     for the FreeRTOS primitives tty.c/ldisc_ntty.c use (mutex, queue,
+     semaphore), so those files compile unmodified off the IDF build.
+   - main/main_host.c — host counterpart to the ESP32 entry point; same
+     display+tty+demo-screen sequence, polls SDL events after the single
+     flush instead of returning.
+   - Platform split: main/MACJr.c renamed to main/ide_screen.c (the part
+     that's actually portable -- draws the Turbo C IDE demo screen) with a
+     new ide_screen.h; flash/heap stats split into platform_stats.h +
+     platform_stats_esp32.c / platform_stats_host.c so ide_screen.c reads
+     real stats on both targets without `#ifdef ESP_PLATFORM` inside it.
+     ESP_PLATFORM (set automatically by the IDF build) is the only switch
+     left, isolated to tty_internal.h's FreeRTOS-vs-shim include and the
+     platform_stats_*.c split.
+
+2. Fixed a platform layering leak: components/tty/src/tty_internal.h was
+   `#include "esp32s3hal/display.h"` -- the portable tty/vc/ldisc stack
+   pulling in a header namespaced under an ESP32-specific HAL component
+   just to get the (fully portable) macjr_hal_display_t struct definition.
+   - Moved that struct as-is into components/tty/include/tty/hal_display.h
+     -- it's plain stdint/stddef, no platform dependency, so it now lives
+     where tty/hal_blit.h and tty/tty.h already used it from.
+   - tty_internal.h, hal_blit.h, tty.h, and both display HAL backends
+     (esp32 + macos) now include "tty/hal_display.h" instead.
+   - components/tty's CMakeLists no longer REQUIRES esp32s3hal.
+
+3. Component reorg: components/esp32s3hal/ -> components/esp32s3_hal/,
+   with a display/ subdirectory per platform HAL grouping directory:
+     components/esp32s3_hal/display/   (display_hal.c/h, lcd.c/h -- the
+                                         ST7789 SPI panel backend)
+     components/macos_hal/display/     (display_hal.c/h -- the SDL2
+                                         backend)
+   The old components/esp32s3hal/include/esp32s3hal/display.h (the
+   abstract interface, now superseded by tty/hal_display.h) and its
+   header-only CMakeLists.txt were deleted -- that component had nothing
+   left in it once the interface moved to tty.
+   - Root CMakeLists.txt's EXTRA_COMPONENT_DIRS, main/CMakeLists.txt's
+     REQUIRES (esp32_st7789 -> display), and macos/CMakeLists.txt's
+     source/include paths all updated to match.
+
+4. components/esp32s3_hal/sdcard/ — new ESP32 HAL component, SD-over-SPI
+   mounted as FAT via esp_vfs_fat (REQUIRES fatfs, esp_driver_sdspi). Kept
+   on its own SPI2_HOST (display panel is on SPI3_HOST, no bus conflict).
+   sdcard_init() mounts at SDCARD_MOUNT_POINT ("/sdcard") and returns
+   esp_err_t; sdcard_deinit() unmounts and frees the SPI bus. Adapted from
+   a sample sdcard.c/h pair -- trimmed the demo-only directory listing,
+   sample file write, and fixed delay out of the HAL (that's app-level
+   behavior, not initialization). Wired into main/main_esp32.c's
+   app_main(): logs a warning and continues without the card on failure,
+   rather than blocking the display demo.
+
+===========================================================================
+HOW IT WORKS
+===========================================================================
+
+  ESP32 (main_esp32.c):
+      app_main() → sdcard_init() (best-effort)
+                 → display_hal_init() + macjr_tty_create(hal, 8, 16)
+                 → draw demo screen, macjr_display_flush(tty) once
+
+  macOS host (main_host.c):
+      main() → macos_display_hal_init() + macjr_tty_create(hal, 8, 16)
+              → draw demo screen, macjr_display_flush(tty) once
+              → loop: macos_display_hal_pump() until window closed
+
+  Both share components/tty/* and main/ide_screen.c unmodified; the only
+  per-platform pieces are the display HAL backend, the FreeRTOS-vs-pthread
+  shim (tty_internal.h), and platform_stats_*.c.
+
+===========================================================================
+NEXT STEPS (PLANNED)
+===========================================================================
+  - Keyboard driver (physical HW or USB HID) wired to macjr_kbd_inject
+  - Shell / REPL skeleton reading from macjr_tty_read
+  - Use the new sdcard HAL as a real filesystem backend (currently just
+    mounted, unused, at startup)

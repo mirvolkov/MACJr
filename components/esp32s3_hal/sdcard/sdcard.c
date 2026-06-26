@@ -1,0 +1,84 @@
+/*
+ * SD-over-SPI HAL: mounts a FAT-formatted SD card at SDCARD_MOUNT_POINT so
+ * the rest of the firmware can use plain stdio (fopen/opendir) against it.
+ */
+#include "sdcard.h"
+
+#include "esp_log.h"
+#include "esp_vfs_fat.h"
+#include "driver/sdspi_host.h"
+#include "driver/spi_common.h"
+#include "sdmmc_cmd.h"
+
+static const char *TAG = "sdcard";
+
+#define SD_SCK  12
+#define SD_MISO 13
+#define SD_MOSI 11
+#define SD_CS   10
+#define SD_HOST SPI2_HOST
+
+static sdmmc_card_t *s_card;
+
+esp_err_t sdcard_init(void)
+{
+    ESP_LOGI(TAG, "Initializing SD card");
+
+    spi_bus_config_t bus_cfg = {
+        .mosi_io_num = SD_MOSI,
+        .miso_io_num = SD_MISO,
+        .sclk_io_num = SD_SCK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 4000,
+    };
+
+    esp_err_t ret = spi_bus_initialize(SD_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize SPI bus: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024,
+    };
+
+    sdspi_device_config_t slot_config = {
+        .gpio_cs = SD_CS,
+        .host_id = SD_HOST,
+        .gpio_cd = SDSPI_SLOT_NO_CD,
+        .gpio_wp = SDSPI_SLOT_NO_WP,
+        .gpio_int = SDSPI_SLOT_NO_INT,
+    };
+
+    sdmmc_host_t host_config = SDSPI_HOST_DEFAULT();
+
+    ret = esp_vfs_fat_sdspi_mount(SDCARD_MOUNT_POINT, &host_config, &slot_config, &mount_config, &s_card);
+    if (ret != ESP_OK) {
+        if (ret == ESP_FAIL) {
+            ESP_LOGE(TAG, "Failed to mount filesystem");
+        } else {
+            ESP_LOGE(TAG, "Failed to initialize the card (%s). "
+                     "Make sure SD card lines have pull-up resistors in place.",
+                     esp_err_to_name(ret));
+        }
+        spi_bus_free(SD_HOST);
+        return ret;
+    }
+
+    sdmmc_card_print_info(stdout, s_card);
+    return ESP_OK;
+}
+
+void sdcard_deinit(void)
+{
+    if (!s_card) {
+        return;
+    }
+    esp_vfs_fat_sdcard_unmount(SDCARD_MOUNT_POINT, s_card);
+    spi_bus_free(SD_HOST);
+    s_card = NULL;
+    ESP_LOGI(TAG, "Card unmounted");
+}

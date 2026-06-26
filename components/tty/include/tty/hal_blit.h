@@ -6,7 +6,7 @@
 #ifndef MACJR_HAL_BLIT_H
 #define MACJR_HAL_BLIT_H
 
-#include "esp32s3hal/display.h"
+#include "tty/hal_display.h"
 #include "tty/vc.h"
 
 #include <stdint.h>

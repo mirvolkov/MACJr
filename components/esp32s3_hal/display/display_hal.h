@@ -1,7 +1,7 @@
 #ifndef MACJR_DISPLAY_HAL_H
 #define MACJR_DISPLAY_HAL_H
 
-#include "esp32s3hal/display.h"
+#include "tty/hal_display.h"
 
 #ifdef __cplusplus
 extern "C" {

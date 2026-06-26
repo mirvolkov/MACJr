@@ -6,5 +6,5 @@ idf_component_register(
     "src/hal_blit.c"
     "src/font_builtin.c"
   INCLUDE_DIRS "include"
-  REQUIRES freertos esp32s3hal
+  REQUIRES freertos
 )
