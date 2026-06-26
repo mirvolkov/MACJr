@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pkg-config --cflags --libs sdl2)",
+      "Read(//opt/homebrew/**)"
+    ]
+  }
+}
