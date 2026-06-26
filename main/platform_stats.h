@@ -2,7 +2,8 @@
  * The two "live" numbers shown in the Turbo C demo's Linking dialog --
  * flash size and free memory -- mean different things on a real ESP32-S3
  * board vs. a desktop host, so the query itself is isolated per platform
- * (platform_stats_esp32.c / platform_stats_host.c) behind this one header.
+ * (implemented directly in main_esp32.c / main_macos.c) behind this one
+ * header.
  */
 #ifndef MACJR_PLATFORM_STATS_H
 #define MACJR_PLATFORM_STATS_H

@@ -7,12 +7,15 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include <sys/resource.h>
+#include <sys/statvfs.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "tty/tty.h"
 #include "display_hal.h"
 #include "ide_screen.h"
+#include "platform_stats.h"
 
 #define MACJR_PANEL_W 320
 #define MACJR_PANEL_H 240
@@ -21,6 +24,27 @@ static int64_t now_us(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
+/* There's no SPI flash chip or FreeRTOS heap on a desktop, so these stand
+ * in with the closest real numbers the OS exposes: free space on the root
+ * volume, and this process's own resident memory. */
+uint32_t macjr_platform_flash_kb(void) {
+  struct statvfs st;
+  if (statvfs("/", &st) != 0) {
+    return 0;
+  }
+  return (uint32_t)(((uint64_t)st.f_bavail * (uint64_t)st.f_frsize) / 1024);
+}
+
+uint32_t macjr_platform_heap_free_kb(void) {
+  struct rusage ru;
+  if (getrusage(RUSAGE_SELF, &ru) != 0) {
+    return 0;
+  }
+  /* macOS reports ru_maxrss in bytes (Linux reports KB -- this project only
+   * targets macOS for the host build, so no #ifdef needed here). */
+  return (uint32_t)(ru.ru_maxrss / 1024);
 }
 
 int main(void) {

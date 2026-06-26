@@ -28,8 +28,7 @@ add_executable(macjr_host
   ${ROOT}/components/tty/src/font_builtin.c
   ${ROOT}/components/macos_hal/display/display_hal.c
   ${ROOT}/main/ide_screen.c
-  ${ROOT}/main/platform_stats_host.c
-  ${ROOT}/main/main_host.c
+  ${ROOT}/main/main_macos.c
 )
 
 target_include_directories(macjr_host PRIVATE

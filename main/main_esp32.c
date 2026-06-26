@@ -1,20 +1,35 @@
 /*
  * ESP32 demo entry point: brings up the ST7789-backed display HAL and the
  * macjr_tty TTY stack, then draws the portable Turbo C IDE screen (see
- * ide_screen.c) and leaves it on screen. See main_host.c for the macOS/SDL2
- * counterpart -- both share ide_screen.c unmodified.
+ * ide_screen.c) and leaves it on screen. See main_macos.c for the
+ * macOS/SDL2 counterpart -- both share ide_screen.c unmodified.
  */
 #include <string.h>
 
+#include "esp_flash.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 
 #include "tty/tty.h"
 #include "display_hal.h"
 #include "ide_screen.h"
+#include "platform_stats.h"
 #include "sdcard.h"
 
 static const char *TAG = "macjr_demo";
+
+/* Real SPI flash chip size and real FreeRTOS free heap -- see
+ * platform_stats.h for what these mean on the macOS host build. */
+uint32_t macjr_platform_flash_kb(void) {
+  uint32_t flash_bytes = 0;
+  esp_flash_get_size(NULL, &flash_bytes);
+  return flash_bytes / 1024;
+}
+
+uint32_t macjr_platform_heap_free_kb(void) {
+  return esp_get_free_heap_size() / 1024;
+}
 
 void app_main(void) {
   if (sdcard_init() != ESP_OK) {
