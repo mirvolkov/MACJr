@@ -10,7 +10,8 @@ cmake_minimum_required(VERSION 3.22)
 list(APPEND EXTRA_COMPONENT_DIRS
   "${CMAKE_CURRENT_LIST_DIR}/components/esp32s3_hal/display"
   "${CMAKE_CURRENT_LIST_DIR}/components/esp32s3_hal/sdcard"
-  "${CMAKE_CURRENT_LIST_DIR}/components/esp32s3_hal/audio")
+  "${CMAKE_CURRENT_LIST_DIR}/components/esp32s3_hal/audio"
+  "${CMAKE_CURRENT_LIST_DIR}/components/esp32s3_hal/matrix")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(MACJr)

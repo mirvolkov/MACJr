@@ -16,6 +16,7 @@
 #include "ide_screen.h"
 #include "platform_stats.h"
 #include "sdcard.h"
+#include "matmul_bench.h"
 
 static const char *TAG = "macjr_demo";
 
@@ -32,6 +33,8 @@ uint32_t macjr_platform_heap_free_kb(void) {
 }
 
 void app_main(void) {
+  matmul_bench_run();
+
   if (sdcard_init() != ESP_OK) {
     ESP_LOGW(TAG, "sdcard_init failed, continuing without SD card");
   }
