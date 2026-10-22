@@ -1,14 +1,27 @@
 /*
- * Drawing code for the Turbo C IDE demo screen. Platform-agnostic: only
- * touches the tty/vc API and platform_stats.h (itself implemented per
- * platform), no ESP-IDF or host-OS includes here.
+ * Drawing code for the Turbo C IDE demo screen: drives the tty/vc API and
+ * shows live flash size / free heap in the "Linking" dialog.
  */
 #include "ide_screen.h"
-#include "platform_stats.h"
+
+#include "esp_flash.h"
+#include "esp_system.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+/* Real SPI flash chip size, in KB. */
+static uint32_t flash_kb(void) {
+  uint32_t flash_bytes = 0;
+  esp_flash_get_size(NULL, &flash_bytes);
+  return flash_bytes / 1024;
+}
+
+/* Real FreeRTOS free heap, in KB. */
+static uint32_t heap_free_kb(void) {
+  return esp_get_free_heap_size() / 1024;
+}
 
 /* Position the cursor, set an SGR fg;bg pair, then write raw bytes (may
  * include 128-255 pseudographics glyphs, not just ASCII). 1-indexed row/col
@@ -116,10 +129,10 @@ void macjr_draw_turboc_ide(macjr_tty_t *tty) {
   border_row(tty, dlg_row, dlg_col, DLG_W, DLG_BORDER_SGR, SGL_TL, SGL_TR, SGL_H, DLG_BORDER_SGR, "Linking");
 
   char flash_line[20];
-  snprintf(flash_line, sizeof(flash_line), "Flash: %luK", (unsigned long)macjr_platform_flash_kb());
+  snprintf(flash_line, sizeof(flash_line), "Flash: %luK", (unsigned long)flash_kb());
 
   char mem_line[20];
-  snprintf(mem_line, sizeof(mem_line), "Mem: %luK", (unsigned long)macjr_platform_heap_free_kb());
+  snprintf(mem_line, sizeof(mem_line), "Mem: %luK", (unsigned long)heap_free_kb());
 
   const char *dlg_lines[] = {
       "EXE: C:\\NONAME.EXE",

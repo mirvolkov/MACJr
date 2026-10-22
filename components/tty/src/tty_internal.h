@@ -9,18 +9,9 @@
 #include "tty/termios.h"
 #include "tty/vc.h"
 
-/* ESP_PLATFORM is defined by the ESP-IDF build for every target; off the
- * back of an IDF build (e.g. the macOS/SDL2 host build, see macos/), there's
- * no FreeRTOS, so host_rtos_shim.h backs the same mutex/queue calls with a
- * tiny pthreads implementation instead. Either way, tty.c/ldisc_ntty.c are
- * unmodified -- only this header's include picks the backend. */
-#ifdef ESP_PLATFORM
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
-#else
-#include "host_rtos_shim.h"
-#endif
 
 #include <stddef.h>
 #include <stdint.h>

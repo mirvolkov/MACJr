@@ -2,16 +2,17 @@
 # CMakeLists in this exact order for cmake to work correctly
 cmake_minimum_required(VERSION 3.22)
 
-# components/esp32s3_hal/display is a separate IDF component (named
-# "display") nested under components/esp32s3_hal/ (a grouping directory for
-# ESP32-S3-specific backends; the macjr_hal_display_t interface itself lives
-# in the portable tty component). ESP-IDF only auto-discovers the immediate
-# children of components/, so it needs to be listed explicitly.
+# Each board backend under components/hal/ is a separate IDF component
+# (named after its directory: display, sdcard, speaker, mic, matrix, keyboard).
+# ESP-IDF only auto-discovers the immediate children of components/, so the
+# nested ones need to be listed explicitly.
 list(APPEND EXTRA_COMPONENT_DIRS
-  "${CMAKE_CURRENT_LIST_DIR}/components/esp32s3_hal/display"
-  "${CMAKE_CURRENT_LIST_DIR}/components/esp32s3_hal/sdcard"
-  "${CMAKE_CURRENT_LIST_DIR}/components/esp32s3_hal/audio"
-  "${CMAKE_CURRENT_LIST_DIR}/components/esp32s3_hal/matrix")
+  "${CMAKE_CURRENT_LIST_DIR}/components/hal/display"
+  "${CMAKE_CURRENT_LIST_DIR}/components/hal/sdcard"
+  "${CMAKE_CURRENT_LIST_DIR}/components/hal/speaker"
+  "${CMAKE_CURRENT_LIST_DIR}/components/hal/mic"
+  "${CMAKE_CURRENT_LIST_DIR}/components/hal/matrix"
+  "${CMAKE_CURRENT_LIST_DIR}/components/hal/keyboard")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(MACJr)
