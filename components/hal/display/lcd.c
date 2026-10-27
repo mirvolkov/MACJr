@@ -52,10 +52,12 @@ static bool on_color_trans_done(esp_lcd_panel_io_handle_t io,
     return woken == pdTRUE;
 }
 
-// RGB888 -> RGB565
+// RGB888 -> RGB565. The ST7789 takes each pixel high byte first, but the
+// little-endian buffer would send the low byte first, so swap here.
 uint16_t rgb_to_565(uint8_t r, uint8_t g, uint8_t b)
 {
-    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+    uint16_t c = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+    return (uint16_t)((c << 8) | (c >> 8));
 }
 
 void lcd_blit_sync(int x1, int y1, int x2, int y2, const void *buf)
@@ -112,9 +114,7 @@ esp_err_t lcd_init(void)
     ESP_LOGI(TAG, "Installing ST7789 panel driver");
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = ST7789_RST,
-        /* This module's panel is wired BGR, not RGB -- with RGB here, red
-           and blue come out swapped. */
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel_handle));

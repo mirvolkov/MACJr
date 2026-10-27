@@ -1,7 +1,10 @@
 /*
- * Firmware entry point: brings up the board HALs (SD card, keyboard,
- * USB UAC mic, ST7789 display) and the macjr_tty TTY stack, then draws the Turbo C IDE
- * demo screen (see ide_screen.c) and leaves it on screen.
+ * Firmware entry point: brings up the board HALs (SD card, keyboard, ST7789
+ * display), asks the boot menu which mode to start (see components/boot),
+ * then runs it:
+ *  - TTY demo: macjr_tty stack + static Turbo C IDE screen (ide_screen.c)
+ *  - SDR + UAC: Si5351 I/Q LO for the Tayloe detector, ADC I/Q streamed
+ *    to the host as a USB UAC microphone
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -14,6 +17,7 @@
 #include "freertos/task.h"
 
 #include "tty/tty.h"
+#include "boot.h"
 #include "display_hal.h"
 #include "ide_screen.h"
 #include "sdcard.h"
@@ -22,13 +26,7 @@
 #include "mic.h"
 #include "sdr.h"
 
-static const char *TAG = "macjr_demo";
-
-/* Held while booting, this key enables extra boot modes (planned: a boot
- * menu to pick them). For now it just starts the mic as a USB UAC device;
- * UAC takes the native USB port away from USB-Serial-JTAG, so it stays off
- * by default to keep flashing/console on that port working. */
-#define BOOT_KEY 158
+static const char *TAG = "MACJR";
 
 /* DEBUG ONLY: reads /dev/kbrd forever and logs every key code. Remove once
  * a real consumer (shell / tty input) reads the keyboard. */
@@ -53,43 +51,7 @@ static void kbrd_debug_task(void *arg) {
   }
 }
 
-void app_main(void) {
-  if (sdcard_init() != ESP_OK) {
-    ESP_LOGW(TAG, "sdcard_init failed, continuing without SD card");
-  }
-
-  if (sdr_init() != ESP_OK) {
-    ESP_LOGW(TAG, "sdr_init failed, continuing without SDR");
-  }
-
-  if (keyboard_init() != ESP_OK) {
-    ESP_LOGW(TAG, "keyboard init failed, continuing without keyboard");
-  } else {
-    xTaskCreate(kbrd_debug_task, "kbrd_dbg", 3072, NULL, 4, NULL); /* DEBUG ONLY */
-  }
-
-  macjr_hal_display_t *hal = display_hal_init();
-  if (!hal) {
-    ESP_LOGE(TAG, "display_hal_init failed");
-    return;
-  }
-
-  macjr_tty_t *tty = macjr_tty_create(hal, 8, 16); /* matches the built-in 8x16 font */
-  if (!tty) {
-    ESP_LOGE(TAG, "macjr_tty_create failed");
-    return;
-  }
-
-  struct macjr_winsize *ws = macjr_tty_winsize(tty);
-  ESP_LOGI(TAG, "tty up: %ux%u chars on %ux%u px", ws->ws_col, ws->ws_row, ws->ws_xpixel, ws->ws_ypixel);
-
-  if (keyboard_key_down(BOOT_KEY)) {
-    ESP_LOGI(TAG, "key %d held at boot: starting USB UAC mic", BOOT_KEY);
-    if (mic_init() != ESP_OK || mic_uac_start() != ESP_OK) {
-      ESP_LOGW(TAG, "mic/UAC init failed, continuing without USB mic");
-    }
-  }
-
+static void run_tty_demo(macjr_tty_t *tty) {
   /* Static, one-shot recreation of a classic Turbo C IDE screen. No
    * keyboard input, no redraw loop -- hide the cursor, draw it once, flush
    * once, and leave it on screen. */
@@ -101,4 +63,63 @@ void app_main(void) {
   macjr_display_flush(tty);
   int64_t flush_us = esp_timer_get_time() - flush_start_us;
   ESP_LOGI(TAG, "display flush took %lld.%03lld ms", flush_us / 1000, flush_us % 1000);
+}
+
+/* UAC takes the native USB port away from USB-Serial-JTAG, so this mode is
+ * only entered from the boot menu; the default boot keeps flashing/console
+ * on that port working. */
+static void run_sdr_uac(macjr_tty_t *tty) {
+  const char *clear = "\x1b[2J\x1b[?25l";
+  macjr_tty_write(tty, clear, strlen(clear));
+
+  const char *status;
+  if (sdr_init() != ESP_OK) {
+    status = "SDR: Si5351 init failed\r\n";
+  } else if (mic_init() != ESP_OK || mic_uac_start() != ESP_OK) {
+    status = "SDR: LO 7.055 MHz I/Q\r\nUAC: mic init failed\r\n";
+  } else {
+    status = "SDR: LO 7.055 MHz I/Q\r\nUAC: streaming I/Q as USB mic\r\n";
+  }
+  ESP_LOGI(TAG, "%s", status);
+  macjr_tty_write(tty, status, strlen(status));
+  macjr_display_flush(tty);
+}
+
+void app_main(void) {
+  if (sdcard_init() != ESP_OK) {
+    ESP_LOGW(TAG, "sdcard_init failed, continuing without SD card");
+  }
+
+  if (keyboard_init() != ESP_OK) {
+    ESP_LOGW(TAG, "keyboard init failed, continuing without keyboard");
+  } else {
+    xTaskCreate(kbrd_debug_task, "kbrd_dbg", 3072, NULL, 4, NULL); /* DEBUG ONLY */
+  }
+
+  macjr_hal_display_t *display = display_hal_init();
+  if (!display) {
+    ESP_LOGE(TAG, "display_hal_init failed");
+    return;
+  }
+
+  boot_mode_t mode = boot_select_mode(display);
+
+  macjr_tty_t *tty = macjr_tty_create(display, 8, 16); /* matches the built-in 8x16 font */
+  if (!tty) {
+    ESP_LOGE(TAG, "macjr_tty_create failed");
+    return;
+  }
+
+  struct macjr_winsize *ws = macjr_tty_winsize(tty);
+  ESP_LOGI(TAG, "tty up: %ux%u chars on %ux%u px", ws->ws_col, ws->ws_row, ws->ws_xpixel, ws->ws_ypixel);
+
+  switch (mode) {
+  case BOOT_MODE_SDR_UAC:
+    run_sdr_uac(tty);
+    break;
+  case BOOT_MODE_TTY_DEMO:
+  default:
+    run_tty_demo(tty);
+    break;
+  }
 }

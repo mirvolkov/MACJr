@@ -17,5 +17,8 @@ list(APPEND EXTRA_COMPONENT_DIRS
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/i2c_bus"
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/sdr")
 
+# Firmware version, shown by the boot menu (esp_app_get_description()).
+set(PROJECT_VER "0.0.2")
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(MACJr)

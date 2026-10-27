@@ -18,7 +18,8 @@ extern esp_lcd_panel_handle_t panel_handle;
 /* Bring up SPI3 + ST7789. Safe to call once. */
 esp_err_t lcd_init(void);
 
-/* RGB888 -> RGB565 (native order, matches the panel config). */
+/* RGB888 -> RGB565, byte-swapped so the panel (which reads the high byte
+ * first) gets it right when the buffer is sent as-is over SPI. */
 uint16_t rgb_to_565(uint8_t r, uint8_t g, uint8_t b);
 
 /*

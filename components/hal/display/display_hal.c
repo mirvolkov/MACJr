@@ -9,6 +9,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 
 static const char *TAG = "tty_hal";
@@ -31,12 +32,42 @@ static uint16_t *s_row_buf;
 static int s_row_y0 = -1; /* top y of the buffered window, -1 = empty */
 static int s_row_h = 0;   /* valid rows currently held in s_row_buf */
 
+/*
+ * Pixels written in the current window, per buffered row: [x0, x1), empty
+ * when x0 >= x1. The buffer is reused between windows without clearing, so
+ * only these spans hold valid pixels; anything else is stale data from an
+ * earlier window and must never reach the panel. ensure_row() keeps each
+ * span gap-free.
+ */
+static int16_t s_dirty_x0[ROW_BUF_CAP];
+static int16_t s_dirty_x1[ROW_BUF_CAP];
+
+/* Send the dirty spans: runs of fully written rows go out as one transfer
+ * (the common console case), partial rows one segment at a time. */
 static void flush_row(macjr_hal_display_t *d)
 {
     if (s_row_y0 < 0) {
         return;
     }
-    lcd_blit_sync(0, s_row_y0, d->width_px, s_row_y0 + s_row_h, s_row_buf);
+    int run = -1; /* first row of the pending full-width run */
+    for (int r = 0; r <= s_row_h; r++) {
+        bool full = r < s_row_h && s_dirty_x0[r] == 0 && s_dirty_x1[r] == d->width_px;
+        if (full) {
+            if (run < 0) {
+                run = r;
+            }
+            continue;
+        }
+        if (run >= 0) {
+            lcd_blit_sync(0, s_row_y0 + run, d->width_px, s_row_y0 + r,
+                          &s_row_buf[(size_t)run * (size_t)d->width_px]);
+            run = -1;
+        }
+        if (r < s_row_h && s_dirty_x0[r] < s_dirty_x1[r]) {
+            lcd_blit_sync(s_dirty_x0[r], s_row_y0 + r, s_dirty_x1[r], s_row_y0 + r + 1,
+                          &s_row_buf[(size_t)r * (size_t)d->width_px + s_dirty_x0[r]]);
+        }
+    }
     s_row_y0 = -1;
     s_row_h = 0;
 }
@@ -46,25 +77,64 @@ static void hal_end_frame(macjr_hal_display_t *d)
     flush_row(d);
 }
 
-/* Make sure rows [y, y+h) are in the buffer, flushing/restarting it if not. */
-static void ensure_row(macjr_hal_display_t *d, int y, int h)
+/* Would writing [x0, x1) on buffered row r leave unwritten pixels between it
+ * and that row's existing span? */
+static bool leaves_gap(int r, int x0, int x1)
 {
-    if (s_row_y0 >= 0 && y >= s_row_y0 && (y + h) <= (s_row_y0 + ROW_BUF_CAP)) {
-        int rel = y + h - s_row_y0;
-        if (rel > s_row_h) {
-            s_row_h = rel;
-        }
-        return;
+    return s_dirty_x0[r] < s_dirty_x1[r] && (x0 > s_dirty_x1[r] || x1 < s_dirty_x0[r]);
+}
+
+/*
+ * Make sure the on-screen part of rect (x, y, w, h) is in the buffer and
+ * mark it written, flushing/restarting the window if the rect doesn't fit
+ * or would split a row's span. Returns false if nothing is on screen.
+ */
+static bool ensure_row(macjr_hal_display_t *d, int x, int y, int w, int h)
+{
+    int x0 = x < 0 ? 0 : x;
+    int x1 = x + w > d->width_px ? d->width_px : x + w;
+    int y0 = y < 0 ? 0 : y;
+    int y1 = y + h > d->height_px ? d->height_px : y + h;
+    if (x0 >= x1 || y0 >= y1) {
+        return false;
     }
-    flush_row(d);
-    s_row_y0 = y;
-    s_row_h = h;
+
+    bool fits = s_row_y0 >= 0 && y0 >= s_row_y0 && y1 <= s_row_y0 + ROW_BUF_CAP;
+    for (int yy = y0; fits && yy < y1; yy++) {
+        int r = yy - s_row_y0;
+        fits = r >= s_row_h || !leaves_gap(r, x0, x1);
+    }
+    if (!fits) {
+        flush_row(d);
+        s_row_y0 = y0;
+    }
+
+    int rel = y1 - s_row_y0;
+    for (int r = s_row_h; r < rel; r++) {
+        s_dirty_x0[r] = 0;
+        s_dirty_x1[r] = 0;
+    }
+    if (rel > s_row_h) {
+        s_row_h = rel;
+    }
+    for (int r = y0 - s_row_y0; r < rel; r++) {
+        if (s_dirty_x0[r] >= s_dirty_x1[r]) {
+            s_dirty_x0[r] = x0;
+            s_dirty_x1[r] = x1;
+        } else {
+            if (x0 < s_dirty_x0[r]) s_dirty_x0[r] = x0;
+            if (x1 > s_dirty_x1[r]) s_dirty_x1[r] = x1;
+        }
+    }
+    return true;
 }
 
 /* Fill a solid rectangle. Called per cell (background) and for the cursor. */
 static void hal_fill_rect(macjr_hal_display_t *d, int x, int y, int w, int h, uint32_t rgb888)
 {
-    ensure_row(d, y, h);
+    if (!ensure_row(d, x, y, w, h)) {
+        return;
+    }
     uint16_t c = to565(rgb888);
     for (int yy = y; yy < y + h; yy++) {
         if (yy < 0 || yy >= d->height_px) {
@@ -84,7 +154,9 @@ static void hal_fill_rect(macjr_hal_display_t *d, int x, int y, int w, int h, ui
 static void hal_blit_1bpp(macjr_hal_display_t *d, int x, int y, int w, int h, int row_bytes,
                           const uint8_t *bitmap, uint32_t fg_rgb888, uint32_t bg_rgb888)
 {
-    ensure_row(d, y, h);
+    if (!ensure_row(d, x, y, w, h)) {
+        return;
+    }
     uint16_t fg = to565(fg_rgb888);
     uint16_t bg = to565(bg_rgb888);
     for (int row = 0; row < h; row++) {
