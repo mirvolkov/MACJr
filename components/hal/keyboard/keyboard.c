@@ -1,65 +1,98 @@
 /*
- * MCP23018 keyboard HAL: the expander sits on I2C (SDA=8, SCL=9) with its
- * INTA -> GPIO3 and INTB -> GPIO46. Both ports are configured as inputs with
- * pull-ups and interrupt-on-change; INT pins are open-drain, active low.
+ * MCP23018 keyboard HAL: the expander sits on I2C (SDA=8, SCL=9) and is
+ * polled, no interrupts.
  *
- * The GPIO ISR only posts the pin number to a queue; a worker task does the
- * I2C reads (INTF/INTCAP, which also clears the interrupt) and the logging.
+ * The keyboard is a non-standard matrix of 32 keys on connector pins 1..14:
+ * rows are pins 1, 12, 13, 14 (all on port A), columns are pins 2..11 (port B
+ * plus A2/A3). Rows 12/13/14 have a key on every column; row 1 only on
+ * columns 5 and 6. The pin-to-expander mapping is in s_rows / s_cols.
  *
- * Matrix test mode instead polls a 4x8 key matrix: rows are GPA7..GPA4
- * (row 0 = GPA7), columns are GPB0..GPB7 (col 0 = GPB0). One row at a time
- * is driven low by switching it to output (OLATA = 0, outputs are
- * open-drain); a pressed key pulls its column low against the pull-up.
+ * One row at a time is driven low by switching it to output (OLATA = 0,
+ * outputs are open-drain); a pressed key pulls its column low against the
+ * pull-up.
+ *
+ * Each debounced key press is published as a one-byte key code on the
+ * character device /dev/kbrd. Every open() gets its own queue, so all
+ * readers see every key.
  */
 #include "keyboard.h"
 
-#include "driver/gpio.h"
+#include <errno.h>
+#include <fcntl.h>
+#include <stdbool.h>
+#include <string.h>
+#include <sys/stat.h>
+
 #include "driver/i2c_master.h"
 #include "esp_log.h"
+#include "esp_vfs.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
+#include "freertos/semphr.h"
+#include "freertos/stream_buffer.h"
 #include "freertos/task.h"
 
 static const char *TAG = "keyboard";
 
 #define KBD_SDA      8
 #define KBD_SCL      9
-#define KBD_INTA     3
-#define KBD_INTB     46
 #define KBD_I2C_HZ   (400 * 1000)
 
 /* 7-bit address is 0x20 + ADDR pin voltage level (0..7); probed at init. */
 #define MCP_ADDR_BASE 0x20
 
-/* Register map with IOCON.BANK = 0 (power-on default): A at even, B at odd. */
+/* Register map with IOCON.BANK = 0 (power-on default): A at even, B at odd.
+ * SEQOP = 0 by default, so a 2-byte read at GPIOA returns GPIOA, GPIOB. */
 #define MCP_IODIRA   0x00
-#define MCP_IODIRB   0x01
-#define MCP_GPINTENA 0x04
-#define MCP_INTCONA  0x08
-#define MCP_IOCON    0x0A
 #define MCP_GPPUA    0x0C
-#define MCP_INTFA    0x0E
-#define MCP_INTCAPA  0x10
 #define MCP_GPIOA    0x12
-#define MCP_GPIOB    0x13
 #define MCP_OLATA    0x14
 
+/* Expander pin as a bit in the 16-bit (GPIOB << 8 | GPIOA) word. */
+#define PA(n) (n)
+#define PB(n) (8 + (n))
+
 #define KBD_ROWS        4
-#define KBD_COLS        8
-#define KBD_ROW_SHIFT   4      /* rows on GPA4..GPA7 */
-#define KBD_ROW_MASK    0xF0
+#define KBD_COLS        10
 #define KBD_SCAN_MS     5      /* debounce = 2 matching scans */
 /* At least one tick: with CONFIG_FREERTOS_HZ=100 a 5 ms delay rounds to 0. */
 #define KBD_SCAN_TICKS  (pdMS_TO_TICKS(KBD_SCAN_MS) > 0 ? pdMS_TO_TICKS(KBD_SCAN_MS) : 1)
 
-/* IOCON: SEQOP=0 (auto-increment), ODR=1 (open-drain INT), INTCC=1 (reading
- * INTCAP clears the interrupt). MIRROR=0 so A and B stay on separate lines. */
-#define MCP_IOCON_ODR   (1 << 2)
-#define MCP_IOCON_INTCC (1 << 0)
+#define KBD_MAX_READERS 4      /* simultaneous open() of /dev/kbrd */
+#define KBD_QUEUE_BYTES 32     /* per reader; keys are dropped when full */
+
+typedef struct {
+    uint8_t kbd_pin; /* keyboard connector pin */
+    uint8_t mcp_bit; /* PA()/PB() */
+} kbd_line_t;
+
+/* Rows are driven, all on port A. */
+static const kbd_line_t s_rows[KBD_ROWS] = {
+    { 1, PA(1) }, { 12, PA(6) }, { 13, PA(0) }, { 14, PA(7) },
+};
+
+/* Columns are read, keyboard pins 2..11 in order. */
+static const kbd_line_t s_cols[KBD_COLS] = {
+    { 2, PA(2) }, { 3, PB(0) }, { 4, PB(6) }, { 5, PB(2) }, { 6, PA(3) },
+    { 7, PB(3) }, { 8, PB(1) }, { 9, PB(4) }, { 10, PB(5) }, { 11, PB(7) },
+};
+
+/* Columns each row actually has keys on (bit c = s_cols[c]). Row pin 1 only
+ * meets column pins 5 and 6; rows 12/13/14 meet all ten columns. */
+#define COL_BIT(pin) (1u << ((pin) - 2))
+static const uint16_t s_row_cols[KBD_ROWS] = {
+    COL_BIT(5) | COL_BIT(6), 0x3FF, 0x3FF, 0x3FF,
+};
+
+typedef struct {
+    StreamBufferHandle_t buf; /* NULL = slot free */
+    bool nonblock;
+} kbd_reader_t;
 
 static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_dev;
-static QueueHandle_t s_irq_queue;
+static uint8_t s_keycode[KBD_ROWS][KBD_COLS]; /* 0 = no key at that spot */
+static kbd_reader_t s_readers[KBD_MAX_READERS];
+static SemaphoreHandle_t s_readers_lock;
 
 static esp_err_t mcp_write_pair(uint8_t reg, uint8_t a, uint8_t b)
 {
@@ -76,34 +109,6 @@ static esp_err_t mcp_write(uint8_t reg, uint8_t val)
 static esp_err_t mcp_read(uint8_t reg, uint8_t *out, size_t len)
 {
     return i2c_master_transmit_receive(s_dev, &reg, 1, out, len, -1);
-}
-
-static void IRAM_ATTR kbd_isr(void *arg)
-{
-    uint32_t pin = (uint32_t)arg;
-    BaseType_t woken = pdFALSE;
-    xQueueSendFromISR(s_irq_queue, &pin, &woken);
-    portYIELD_FROM_ISR(woken);
-}
-
-static void kbd_task(void *arg)
-{
-    uint32_t pin;
-    for (;;) {
-        if (xQueueReceive(s_irq_queue, &pin, portMAX_DELAY) != pdTRUE) {
-            continue;
-        }
-        /* INTFA, INTFB, then (auto-increment) skip to INTCAPA, INTCAPB. */
-        uint8_t intf[2] = { 0 }, intcap[2] = { 0 };
-        if (mcp_read(MCP_INTFA, intf, 2) != ESP_OK ||
-            mcp_read(MCP_INTCAPA, intcap, 2) != ESP_OK) {
-            ESP_LOGW(TAG, "MCP23018 read failed after IRQ on GPIO%lu", pin);
-            continue;
-        }
-        ESP_LOGI(TAG, "key pressed (INT%c/GPIO%lu) INTF=%02x%02x CAP=%02x%02x",
-                 pin == KBD_INTA ? 'A' : 'B', pin,
-                 intf[1], intf[0], intcap[1], intcap[0]);
-    }
 }
 
 static esp_err_t mcp_find(void)
@@ -123,51 +128,60 @@ static esp_err_t mcp_find(void)
     return ESP_ERR_NOT_FOUND;
 }
 
-static esp_err_t mcp_configure_irq(void)
-{
-    /* IOCON is mirrored at 0x0A/0x0B; write both copies. */
-    uint8_t iocon = MCP_IOCON_ODR | MCP_IOCON_INTCC;
-    esp_err_t ret;
-    if ((ret = mcp_write_pair(MCP_IOCON, iocon, iocon)) != ESP_OK) return ret;
-    if ((ret = mcp_write_pair(MCP_IODIRA, 0xFF, 0xFF)) != ESP_OK) return ret;   /* all inputs */
-    if ((ret = mcp_write_pair(MCP_GPPUA, 0xFF, 0xFF)) != ESP_OK) return ret;    /* pull-ups */
-    if ((ret = mcp_write_pair(MCP_INTCONA, 0x00, 0x00)) != ESP_OK) return ret;  /* on change */
-    if ((ret = mcp_write_pair(MCP_GPINTENA, 0xFF, 0xFF)) != ESP_OK) return ret; /* enable IRQ */
-
-    /* Clear any interrupt latched during configuration. */
-    uint8_t dummy[2];
-    mcp_read(MCP_INTCAPA, dummy, 2);
-    mcp_read(MCP_GPIOA, dummy, 2);
-    return ESP_OK;
-}
-
 static esp_err_t mcp_configure_matrix(void)
 {
     esp_err_t ret;
-    if ((ret = mcp_write_pair(MCP_GPINTENA, 0x00, 0x00)) != ESP_OK) return ret; /* no IRQs */
     if ((ret = mcp_write_pair(MCP_IODIRA, 0xFF, 0xFF)) != ESP_OK) return ret;   /* all idle as inputs */
     if ((ret = mcp_write_pair(MCP_GPPUA, 0xFF, 0xFF)) != ESP_OK) return ret;    /* pull-ups */
     return mcp_write(MCP_OLATA, 0x00); /* a row switched to output drives low */
 }
 
-/* Drive each row low in turn and read the columns. out[r] bit c = 1 means
- * key (r, c) is down. */
-static esp_err_t matrix_scan(uint8_t out[KBD_ROWS])
+/* Number the existing keys row by row: KBD_KEYCODE_BASE .. +KBD_KEY_COUNT-1. */
+static void keycodes_assign(void)
+{
+    uint8_t code = KBD_KEYCODE_BASE;
+    for (int r = 0; r < KBD_ROWS; r++) {
+        for (int c = 0; c < KBD_COLS; c++) {
+            s_keycode[r][c] = (s_row_cols[r] & (1u << c)) ? code++ : 0;
+        }
+    }
+}
+
+/* Drive each row low in turn and read both ports. out[r] bit c = 1 means
+ * the key at s_rows[r] x s_cols[c] is down. */
+static esp_err_t matrix_scan(uint16_t out[KBD_ROWS])
 {
     esp_err_t ret;
     for (int r = 0; r < KBD_ROWS; r++) {
-        uint8_t row_bit = 1 << (KBD_ROW_SHIFT + KBD_ROWS - 1 - r); /* row 0 = GPA7 */
+        uint8_t row_bit = 1 << s_rows[r].mcp_bit;
         if ((ret = mcp_write(MCP_IODIRA, (uint8_t)~row_bit)) != ESP_OK) return ret;
-        uint8_t cols;
-        if ((ret = mcp_read(MCP_GPIOB, &cols, 1)) != ESP_OK) return ret;
-        out[r] = (uint8_t)~cols;
+        uint8_t ab[2];
+        if ((ret = mcp_read(MCP_GPIOA, ab, 2)) != ESP_OK) return ret;
+        uint16_t low = (uint16_t)~(ab[0] | (ab[1] << 8));
+        uint16_t keys = 0;
+        for (int c = 0; c < KBD_COLS; c++) {
+            if (low & (1u << s_cols[c].mcp_bit)) keys |= 1u << c;
+        }
+        out[r] = keys & s_row_cols[r];
     }
     return mcp_write(MCP_IODIRA, 0xFF); /* release all rows */
 }
 
-static void matrix_task(void *arg)
+/* Hand a key code to every open reader; a full queue drops the key. */
+static void key_publish(uint8_t code)
 {
-    uint8_t raw[KBD_ROWS], prev_raw[KBD_ROWS] = { 0 }, stable[KBD_ROWS] = { 0 };
+    xSemaphoreTake(s_readers_lock, portMAX_DELAY);
+    for (int i = 0; i < KBD_MAX_READERS; i++) {
+        if (s_readers[i].buf) {
+            xStreamBufferSend(s_readers[i].buf, &code, 1, 0);
+        }
+    }
+    xSemaphoreGive(s_readers_lock);
+}
+
+static void scan_task(void *arg)
+{
+    uint16_t raw[KBD_ROWS], prev_raw[KBD_ROWS] = { 0 }, stable[KBD_ROWS] = { 0 };
     TickType_t last_wake = xTaskGetTickCount();
     for (;;) {
         vTaskDelayUntil(&last_wake, KBD_SCAN_TICKS);
@@ -177,18 +191,126 @@ static void matrix_task(void *arg)
         }
         for (int r = 0; r < KBD_ROWS; r++) {
             /* Debounce: accept a row only after two identical scans. */
-            uint8_t changed = (raw[r] == prev_raw[r]) ? (raw[r] ^ stable[r]) : 0;
+            uint16_t changed = (raw[r] == prev_raw[r]) ? (raw[r] ^ stable[r]) : 0;
             prev_raw[r] = raw[r];
+            uint16_t pressed = changed & raw[r];
             for (int c = 0; c < KBD_COLS; c++) {
-                if (changed & (1 << c)) {
-                    ESP_LOGI(TAG, "key %s: row %d x col %d",
-                             (raw[r] & (1 << c)) ? "down" : "up", r, c);
+                if (pressed & (1u << c)) {
+                    ESP_LOGD(TAG, "key %u (pin %d x pin %d)", s_keycode[r][c],
+                             s_rows[r].kbd_pin, s_cols[c].kbd_pin);
+                    key_publish(s_keycode[r][c]);
                 }
             }
             stable[r] ^= changed;
         }
     }
 }
+
+/* ---- /dev/kbrd ---------------------------------------------------------- */
+
+static bool reader_valid(int fd)
+{
+    return fd >= 0 && fd < KBD_MAX_READERS && s_readers[fd].buf;
+}
+
+static int kbrd_open(void *ctx, const char *path, int flags, int mode)
+{
+    if (path[0] != '\0' && strcmp(path, "/") != 0) {
+        errno = ENOENT;
+        return -1;
+    }
+    if ((flags & O_ACCMODE) != O_RDONLY) {
+        errno = EACCES;
+        return -1;
+    }
+    StreamBufferHandle_t buf = xStreamBufferCreate(KBD_QUEUE_BYTES, 1);
+    if (!buf) {
+        errno = ENOMEM;
+        return -1;
+    }
+    xSemaphoreTake(s_readers_lock, portMAX_DELAY);
+    for (int fd = 0; fd < KBD_MAX_READERS; fd++) {
+        if (!s_readers[fd].buf) {
+            s_readers[fd].buf = buf;
+            s_readers[fd].nonblock = (flags & O_NONBLOCK) != 0;
+            xSemaphoreGive(s_readers_lock);
+            return fd;
+        }
+    }
+    xSemaphoreGive(s_readers_lock);
+    vStreamBufferDelete(buf);
+    errno = ENFILE;
+    return -1;
+}
+
+static ssize_t kbrd_read(void *ctx, int fd, void *dst, size_t size)
+{
+    if (!reader_valid(fd)) {
+        errno = EBADF;
+        return -1;
+    }
+    if (size == 0) {
+        return 0;
+    }
+    kbd_reader_t *rd = &s_readers[fd];
+    size_t n = xStreamBufferReceive(rd->buf, dst, size, rd->nonblock ? 0 : portMAX_DELAY);
+    if (n == 0) {
+        errno = EAGAIN;
+        return -1;
+    }
+    return (ssize_t)n;
+}
+
+static int kbrd_close(void *ctx, int fd)
+{
+    if (!reader_valid(fd)) {
+        errno = EBADF;
+        return -1;
+    }
+    xSemaphoreTake(s_readers_lock, portMAX_DELAY);
+    StreamBufferHandle_t buf = s_readers[fd].buf;
+    s_readers[fd].buf = NULL;
+    xSemaphoreGive(s_readers_lock);
+    vStreamBufferDelete(buf);
+    return 0;
+}
+
+static int kbrd_fcntl(void *ctx, int fd, int cmd, int arg)
+{
+    if (!reader_valid(fd)) {
+        errno = EBADF;
+        return -1;
+    }
+    switch (cmd) {
+    case F_GETFL:
+        return O_RDONLY | (s_readers[fd].nonblock ? O_NONBLOCK : 0);
+    case F_SETFL:
+        s_readers[fd].nonblock = (arg & O_NONBLOCK) != 0;
+        return 0;
+    default:
+        errno = EINVAL;
+        return -1;
+    }
+}
+
+static int kbrd_fstat(void *ctx, int fd, struct stat *st)
+{
+    if (!reader_valid(fd)) {
+        errno = EBADF;
+        return -1;
+    }
+    memset(st, 0, sizeof(*st));
+    st->st_mode = S_IFCHR | 0444;
+    return 0;
+}
+
+static const esp_vfs_fs_ops_t s_kbrd_ops = {
+    .open_p = kbrd_open,
+    .read_p = kbrd_read,
+    .close_p = kbrd_close,
+    .fcntl_p = kbrd_fcntl,
+    .fstat_p = kbrd_fstat,
+};
 
 esp_err_t keyboard_init(void)
 {
@@ -208,54 +330,42 @@ esp_err_t keyboard_init(void)
         return ret;
     }
 
-    if ((ret = mcp_find()) != ESP_OK) {
-        i2c_del_master_bus(s_bus);
-        s_bus = NULL;
-    }
-    return ret;
-}
-
-esp_err_t keyboard_irq_start(void)
-{
-    esp_err_t ret = mcp_configure_irq();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to configure MCP23018: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    s_irq_queue = xQueueCreate(16, sizeof(uint32_t));
-    if (!s_irq_queue) return ESP_ERR_NO_MEM;
-    if (xTaskCreate(kbd_task, "kbd", 3072, NULL, 10, NULL) != pdPASS) return ESP_ERR_NO_MEM;
-
-    /* INT lines are open-drain active-low: pull up and trigger on falling edge. */
-    gpio_config_t io_cfg = {
-        .pin_bit_mask = (1ULL << KBD_INTA) | (1ULL << KBD_INTB),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_NEGEDGE,
-    };
-    if ((ret = gpio_config(&io_cfg)) != ESP_OK) return ret;
-
-    ret = gpio_install_isr_service(0);
-    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) return ret; /* already installed is fine */
-    gpio_isr_handler_add(KBD_INTA, kbd_isr, (void *)KBD_INTA);
-    gpio_isr_handler_add(KBD_INTB, kbd_isr, (void *)KBD_INTB);
-
-    ESP_LOGI(TAG, "Keyboard IRQ mode ready (INTA=GPIO%d, INTB=GPIO%d)", KBD_INTA, KBD_INTB);
-    return ESP_OK;
-}
-
-esp_err_t keyboard_matrix_test_start(void)
-{
-    esp_err_t ret = mcp_configure_matrix();
-    if (ret != ESP_OK) {
+    if ((ret = mcp_find()) != ESP_OK) goto fail_bus;
+    if ((ret = mcp_configure_matrix()) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to configure MCP23018 matrix: %s", esp_err_to_name(ret));
-        return ret;
+        goto fail_bus;
     }
-    if (xTaskCreate(matrix_task, "kbd_scan", 3072, NULL, 5, NULL) != pdPASS) return ESP_ERR_NO_MEM;
+    keycodes_assign();
 
-    ESP_LOGI(TAG, "Matrix test mode: %dx%d, rows GPA7..GPA4, cols GPB0..GPB7, scan %lu ms",
-             KBD_ROWS, KBD_COLS, (unsigned long)(KBD_SCAN_TICKS * portTICK_PERIOD_MS));
+    s_readers_lock = xSemaphoreCreateMutex();
+    if (!s_readers_lock) {
+        ret = ESP_ERR_NO_MEM;
+        goto fail_bus;
+    }
+    ret = esp_vfs_register_fs(KBD_DEV_PATH, &s_kbrd_ops,
+                              ESP_VFS_FLAG_CONTEXT_PTR | ESP_VFS_FLAG_STATIC, NULL);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to register %s: %s", KBD_DEV_PATH, esp_err_to_name(ret));
+        goto fail_lock;
+    }
+    if (xTaskCreate(scan_task, "kbd_scan", 3072, NULL, 5, NULL) != pdPASS) {
+        esp_vfs_unregister(KBD_DEV_PATH);
+        ret = ESP_ERR_NO_MEM;
+        goto fail_lock;
+    }
+
+    ESP_LOGI(TAG, "Keyboard ready on %s: %d keys, codes %d..%d, scan %lu ms",
+             KBD_DEV_PATH, KBD_KEY_COUNT, KBD_KEYCODE_BASE, KBD_KEYCODE_BASE + KBD_KEY_COUNT - 1,
+             (unsigned long)(KBD_SCAN_TICKS * portTICK_PERIOD_MS));
     return ESP_OK;
+
+fail_lock:
+    vSemaphoreDelete(s_readers_lock);
+    s_readers_lock = NULL;
+fail_bus:
+    if (s_dev) i2c_master_bus_rm_device(s_dev);
+    i2c_del_master_bus(s_bus);
+    s_dev = NULL;
+    s_bus = NULL;
+    return ret;
 }

@@ -7,19 +7,22 @@
 extern "C" {
 #endif
 
-/* Bring up the I2C bus and find the MCP23018 expander. Call once at
- * startup, then start exactly one of the modes below. */
+/* Character device that delivers key presses, one byte per key. Open it
+ * read-only; each open() gets its own queue, so every reader sees every
+ * key. read() blocks until a key arrives unless O_NONBLOCK is set (then it
+ * fails with EAGAIN). Key releases are not reported. */
+#define KBD_DEV_PATH "/dev/kbrd"
+
+/* Raw key codes, not yet mapped to ASCII: the 32 keys are numbered
+ * KBD_KEYCODE_BASE..KBD_KEYCODE_BASE + KBD_KEY_COUNT - 1 row by row
+ * (row pins 1, 12, 13, 14; columns by pin 2..11), so row pin 1 x col pin 5
+ * is 128 and row pin 14 x col pin 11 is 159. */
+#define KBD_KEYCODE_BASE 128
+#define KBD_KEY_COUNT    32
+
+/* Bring up the I2C bus and the MCP23018 expander, register KBD_DEV_PATH and
+ * start the matrix scan task. Call once at startup. */
 esp_err_t keyboard_init(void);
-
-/* Configure all 16 pins as pulled-up inputs with interrupt-on-change and
- * hook INTA/INTB to a GPIO ISR. Each interrupt is logged from a dedicated
- * task (ESP_LOG* is not ISR-safe). */
-esp_err_t keyboard_irq_start(void);
-
-/* Test mode: continuously scan the 4x8 matrix (rows GPA7..GPA4, cols
- * GPB0..GPB7) every 5 ms with debounce, logging "key down/up: row R x
- * col C" to the console. */
-esp_err_t keyboard_matrix_test_start(void);
 
 #ifdef __cplusplus
 }

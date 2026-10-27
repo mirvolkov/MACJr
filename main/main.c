@@ -3,10 +3,15 @@
  * USB UAC mic, ST7789 display) and the macjr_tty TTY stack, then draws the Turbo C IDE
  * demo screen (see ide_screen.c) and leaves it on screen.
  */
+#include <errno.h>
+#include <fcntl.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "tty/tty.h"
 #include "display_hal.h"
@@ -18,6 +23,29 @@
 
 static const char *TAG = "macjr_demo";
 
+/* DEBUG ONLY: reads /dev/kbrd forever and logs every key code. Remove once
+ * a real consumer (shell / tty input) reads the keyboard. */
+static void kbrd_debug_task(void *arg) {
+  int fd = open(KBD_DEV_PATH, O_RDONLY);
+  if (fd < 0) {
+    ESP_LOGE(TAG, "open %s failed: errno %d", KBD_DEV_PATH, errno);
+    vTaskDelete(NULL);
+    return;
+  }
+  for (;;) {
+    uint8_t keys[8];
+    ssize_t n = read(fd, keys, sizeof(keys)); /* blocks until a key is pressed */
+    if (n < 0) {
+      ESP_LOGW(TAG, "read %s failed: errno %d", KBD_DEV_PATH, errno);
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
+    for (ssize_t i = 0; i < n; i++) {
+      ESP_LOGI(TAG, "%s: key %u", KBD_DEV_PATH, keys[i]);
+    }
+  }
+}
+
 void app_main(void) {
   // matmul_bench_run();
 
@@ -25,8 +53,10 @@ void app_main(void) {
     ESP_LOGW(TAG, "sdcard_init failed, continuing without SD card");
   }
 
-  if (keyboard_init() != ESP_OK || keyboard_matrix_test_start() != ESP_OK) {
+  if (keyboard_init() != ESP_OK) {
     ESP_LOGW(TAG, "keyboard init failed, continuing without keyboard");
+  } else {
+    xTaskCreate(kbrd_debug_task, "kbrd_dbg", 3072, NULL, 4, NULL); /* DEBUG ONLY */
   }
 
   // if (mic_init() != ESP_OK || mic_uac_start() != ESP_OK) {
