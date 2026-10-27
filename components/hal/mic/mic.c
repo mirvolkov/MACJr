@@ -12,8 +12,8 @@
 #include "esp_adc/adc_continuous.h"
 
 #define MIC_ADC_UNIT ADC_UNIT_1
-#define MIC_CH_LEFT ADC_CHANNEL_3  /* GPIO4 */
-#define MIC_CH_RIGHT ADC_CHANNEL_4 /* GPIO5 */
+#define MIC_CH_LEFT ADC_CHANNEL_2  /* GPIO3 */
+#define MIC_CH_RIGHT ADC_CHANNEL_3 /* GPIO4 */
 
 #define RESULT_BYTES SOC_ADC_DIGI_RESULT_BYTES
 #define CONV_FRAME_RESULTS 128 /* DMA frame: 64 stereo frames = 4 ms */
@@ -84,7 +84,7 @@ esp_err_t mic_init(void) {
     return ret;
   }
 
-  ESP_LOGI(TAG, "Mic ready: %d Hz x %d ch (L=GPIO4, R=GPIO5)", MIC_SAMPLE_RATE, MIC_CHANNELS);
+  ESP_LOGI(TAG, "Mic ready: %d Hz x %d ch (L=GPIO3, R=GPIO4)", MIC_SAMPLE_RATE, MIC_CHANNELS);
   return ESP_OK;
 }
 

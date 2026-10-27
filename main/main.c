@@ -20,8 +20,15 @@
 #include "matmul_bench.h"
 #include "keyboard.h"
 #include "mic.h"
+#include "sdr.h"
 
 static const char *TAG = "macjr_demo";
+
+/* Held while booting, this key enables extra boot modes (planned: a boot
+ * menu to pick them). For now it just starts the mic as a USB UAC device;
+ * UAC takes the native USB port away from USB-Serial-JTAG, so it stays off
+ * by default to keep flashing/console on that port working. */
+#define BOOT_KEY 158
 
 /* DEBUG ONLY: reads /dev/kbrd forever and logs every key code. Remove once
  * a real consumer (shell / tty input) reads the keyboard. */
@@ -47,10 +54,12 @@ static void kbrd_debug_task(void *arg) {
 }
 
 void app_main(void) {
-  // matmul_bench_run();
-
   if (sdcard_init() != ESP_OK) {
     ESP_LOGW(TAG, "sdcard_init failed, continuing without SD card");
+  }
+
+  if (sdr_init() != ESP_OK) {
+    ESP_LOGW(TAG, "sdr_init failed, continuing without SDR");
   }
 
   if (keyboard_init() != ESP_OK) {
@@ -58,10 +67,6 @@ void app_main(void) {
   } else {
     xTaskCreate(kbrd_debug_task, "kbrd_dbg", 3072, NULL, 4, NULL); /* DEBUG ONLY */
   }
-
-  // if (mic_init() != ESP_OK || mic_uac_start() != ESP_OK) {
-  //   ESP_LOGW(TAG, "mic/UAC init failed, continuing without USB mic");
-  // }
 
   macjr_hal_display_t *hal = display_hal_init();
   if (!hal) {
@@ -77,6 +82,13 @@ void app_main(void) {
 
   struct macjr_winsize *ws = macjr_tty_winsize(tty);
   ESP_LOGI(TAG, "tty up: %ux%u chars on %ux%u px", ws->ws_col, ws->ws_row, ws->ws_xpixel, ws->ws_ypixel);
+
+  if (keyboard_key_down(BOOT_KEY)) {
+    ESP_LOGI(TAG, "key %d held at boot: starting USB UAC mic", BOOT_KEY);
+    if (mic_init() != ESP_OK || mic_uac_start() != ESP_OK) {
+      ESP_LOGW(TAG, "mic/UAC init failed, continuing without USB mic");
+    }
+  }
 
   /* Static, one-shot recreation of a classic Turbo C IDE screen. No
    * keyboard input, no redraw loop -- hide the cursor, draw it once, flush

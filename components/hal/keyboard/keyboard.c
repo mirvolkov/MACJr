@@ -1,5 +1,5 @@
 /*
- * MCP23018 keyboard HAL: the expander sits on I2C (SDA=8, SCL=9) and is
+ * MCP23018 keyboard HAL: the expander sits on the shared I2C bus (i2c_bus) and is
  * polled, no interrupts.
  *
  * The keyboard is a non-standard matrix of 32 keys on connector pins 1..14:
@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 
 #include "driver/i2c_master.h"
+#include "i2c_bus.h"
 #include "esp_log.h"
 #include "esp_vfs.h"
 #include "freertos/FreeRTOS.h"
@@ -33,8 +34,6 @@
 
 static const char *TAG = "keyboard";
 
-#define KBD_SDA      8
-#define KBD_SCL      9
 #define KBD_I2C_HZ   (400 * 1000)
 
 /* 7-bit address is 0x20 + ADDR pin voltage level (0..7); probed at init. */
@@ -92,6 +91,8 @@ static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_dev;
 static uint8_t s_keycode[KBD_ROWS][KBD_COLS]; /* 0 = no key at that spot */
 static kbd_reader_t s_readers[KBD_MAX_READERS];
+static volatile uint16_t s_stable[KBD_ROWS]; /* debounced state, bit c = key down */
+static volatile uint32_t s_scans;            /* completed scans since init */
 static SemaphoreHandle_t s_readers_lock;
 
 static esp_err_t mcp_write_pair(uint8_t reg, uint8_t a, uint8_t b)
@@ -181,7 +182,7 @@ static void key_publish(uint8_t code)
 
 static void scan_task(void *arg)
 {
-    uint16_t raw[KBD_ROWS], prev_raw[KBD_ROWS] = { 0 }, stable[KBD_ROWS] = { 0 };
+    uint16_t raw[KBD_ROWS], prev_raw[KBD_ROWS] = { 0 };
     TickType_t last_wake = xTaskGetTickCount();
     for (;;) {
         vTaskDelayUntil(&last_wake, KBD_SCAN_TICKS);
@@ -191,7 +192,7 @@ static void scan_task(void *arg)
         }
         for (int r = 0; r < KBD_ROWS; r++) {
             /* Debounce: accept a row only after two identical scans. */
-            uint16_t changed = (raw[r] == prev_raw[r]) ? (raw[r] ^ stable[r]) : 0;
+            uint16_t changed = (raw[r] == prev_raw[r]) ? (raw[r] ^ s_stable[r]) : 0;
             prev_raw[r] = raw[r];
             uint16_t pressed = changed & raw[r];
             for (int c = 0; c < KBD_COLS; c++) {
@@ -201,9 +202,29 @@ static void scan_task(void *arg)
                     key_publish(s_keycode[r][c]);
                 }
             }
-            stable[r] ^= changed;
+            s_stable[r] ^= changed;
+        }
+        s_scans++;
+    }
+}
+
+bool keyboard_key_down(uint8_t code)
+{
+    if (!s_dev) {
+        return false;
+    }
+    /* A key held since power-up needs two matching scans to be accepted. */
+    for (int i = 0; s_scans < 2 && i < 10; i++) {
+        vTaskDelay(KBD_SCAN_TICKS);
+    }
+    for (int r = 0; r < KBD_ROWS; r++) {
+        for (int c = 0; c < KBD_COLS; c++) {
+            if (s_keycode[r][c] == code) {
+                return (s_stable[r] & (1u << c)) != 0;
+            }
         }
     }
+    return false;
 }
 
 /* ---- /dev/kbrd ---------------------------------------------------------- */
@@ -316,31 +337,22 @@ esp_err_t keyboard_init(void)
 {
     ESP_LOGI(TAG, "Initializing MCP23018 keyboard");
 
-    i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = -1, /* auto-select */
-        .sda_io_num = KBD_SDA,
-        .scl_io_num = KBD_SCL,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .flags.enable_internal_pullup = true,
-    };
-    esp_err_t ret = i2c_new_master_bus(&bus_cfg, &s_bus);
+    esp_err_t ret = i2c_bus_get(&s_bus);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to create I2C bus: %s", esp_err_to_name(ret));
         return ret;
     }
 
-    if ((ret = mcp_find()) != ESP_OK) goto fail_bus;
+    if ((ret = mcp_find()) != ESP_OK) goto fail_dev;
     if ((ret = mcp_configure_matrix()) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to configure MCP23018 matrix: %s", esp_err_to_name(ret));
-        goto fail_bus;
+        goto fail_dev;
     }
     keycodes_assign();
 
     s_readers_lock = xSemaphoreCreateMutex();
     if (!s_readers_lock) {
         ret = ESP_ERR_NO_MEM;
-        goto fail_bus;
+        goto fail_dev;
     }
     ret = esp_vfs_register_fs(KBD_DEV_PATH, &s_kbrd_ops,
                               ESP_VFS_FLAG_CONTEXT_PTR | ESP_VFS_FLAG_STATIC, NULL);
@@ -362,10 +374,8 @@ esp_err_t keyboard_init(void)
 fail_lock:
     vSemaphoreDelete(s_readers_lock);
     s_readers_lock = NULL;
-fail_bus:
+fail_dev:
     if (s_dev) i2c_master_bus_rm_device(s_dev);
-    i2c_del_master_bus(s_bus);
     s_dev = NULL;
-    s_bus = NULL;
     return ret;
 }

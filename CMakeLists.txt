@@ -3,7 +3,8 @@
 cmake_minimum_required(VERSION 3.22)
 
 # Each board backend under components/hal/ is a separate IDF component
-# (named after its directory: display, sdcard, speaker, mic, matrix, keyboard).
+# (named after its directory: display, sdcard, speaker, mic, matrix, keyboard,
+# i2c_bus, sdr).
 # ESP-IDF only auto-discovers the immediate children of components/, so the
 # nested ones need to be listed explicitly.
 list(APPEND EXTRA_COMPONENT_DIRS
@@ -12,7 +13,9 @@ list(APPEND EXTRA_COMPONENT_DIRS
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/speaker"
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/mic"
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/matrix"
-  "${CMAKE_CURRENT_LIST_DIR}/components/hal/keyboard")
+  "${CMAKE_CURRENT_LIST_DIR}/components/hal/keyboard"
+  "${CMAKE_CURRENT_LIST_DIR}/components/hal/i2c_bus"
+  "${CMAKE_CURRENT_LIST_DIR}/components/hal/sdr")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(MACJr)

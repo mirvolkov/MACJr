@@ -1,6 +1,9 @@
 #ifndef MACJR_KEYBOARD_H
 #define MACJR_KEYBOARD_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 #include "esp_err.h"
 
 #ifdef __cplusplus
@@ -23,6 +26,11 @@ extern "C" {
 /* Bring up the I2C bus and the MCP23018 expander, register KBD_DEV_PATH and
  * start the matrix scan task. Call once at startup. */
 esp_err_t keyboard_init(void);
+
+/* True if the key with this code is currently held down (debounced). Right
+ * after keyboard_init() it waits for the first scans to finish, so it can be
+ * used at boot to check for a key held since power-up. */
+bool keyboard_key_down(uint8_t code);
 
 #ifdef __cplusplus
 }

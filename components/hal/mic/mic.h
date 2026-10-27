@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-/* Left channel is ADC1_CH3 (GPIO4), right channel is ADC1_CH4 (GPIO5). */
+/* Left channel is ADC1_CH2 (GPIO3), right channel is ADC1_CH3 (GPIO4). */
 #define MIC_CHANNELS 2
 #define MIC_SAMPLE_RATE 16000 /* Hz, per channel */
 
