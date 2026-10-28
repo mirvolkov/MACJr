@@ -25,6 +25,7 @@
 #include "keyboard.h"
 #include "mic.h"
 #include "sdr.h"
+#include "monitor.h"
 
 static const char *TAG = "MACJR";
 
@@ -121,5 +122,11 @@ void app_main(void) {
   default:
     run_tty_demo(tty);
     break;
+  }
+
+  /* Started after the mode has drawn its screen, so the monitor saves and
+   * later restores that screen. */
+  if (monitor_start(tty) != ESP_OK) {
+    ESP_LOGW(TAG, "monitor_start failed");
   }
 }

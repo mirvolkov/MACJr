@@ -106,10 +106,6 @@ static boot_mode_t wait_choice(void) {
 }
 
 boot_mode_t boot_select_mode(macjr_hal_display_t *display) {
-  if (!keyboard_key_down(BOOT_KEY)) {
-    return BOOT_MODE_TTY_DEMO;
-  }
-  ESP_LOGI(TAG, "BOOT_KEY held: showing boot menu");
   draw_menu(display);
   boot_mode_t mode = wait_choice();
   ESP_LOGI(TAG, "boot mode %d selected", mode);

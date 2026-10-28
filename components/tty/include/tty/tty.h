@@ -39,6 +39,15 @@ void macjr_kbd_inject(macjr_tty_t *tty, const uint8_t *data, size_t len);
 /* After writes / injects, call periodically to push dirty cells to the panel. */
 void macjr_display_flush(macjr_tty_t *tty);
 
+/* Copy of the whole console (cells, cursor, colors) for overlays such as the
+ * system monitor: save it, draw something else, then restore it. */
+typedef struct macjr_tty_screen macjr_tty_screen_t;
+/* Snapshot the current screen. Returns NULL if out of memory. */
+macjr_tty_screen_t *macjr_tty_save_screen(macjr_tty_t *tty);
+/* Put a saved screen back, mark every row for redraw and free the snapshot.
+ * Call macjr_display_flush() afterwards to show it. */
+void macjr_tty_restore_screen(macjr_tty_t *tty, macjr_tty_screen_t *screen);
+
 /* Accessors for the underlying console/termios/winsize state. */
 macjr_vc_t *macjr_tty_vc(macjr_tty_t *tty);
 struct macjr_termios *macjr_tty_termios(macjr_tty_t *tty);

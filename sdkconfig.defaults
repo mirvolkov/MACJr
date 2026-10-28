@@ -25,5 +25,23 @@ CONFIG_UAC_SPEAKER_CHANNEL_NUM=0
 CONFIG_UAC_MIC_CHANNEL_NUM=2
 CONFIG_UAC_SAMPLE_RATE=16000
 CONFIG_UAC_BIT_RESOLUTION_16=y
-CONFIG_UAC_MIC_INTERVAL_MS=10
+CONFIG_UAC_MIC_INTERVAL_MS=2
 CONFIG_UAC_SUPPORT_MACOS=y
+
+# 1 ms tick: the UAC mic task paces itself with vTaskDelayUntil(MIC_INTERVAL_MS),
+# which would round to 0 ticks (assert) at the default 100 Hz.
+CONFIG_FREERTOS_HZ=1000
+
+# Boot speed: skip app image validation when waking from deep sleep.
+CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP=y
+# Skip the destructive full-PSRAM pattern test at startup.
+# CONFIG_SPIRAM_MEMTEST is not set
+# The module's flash supports quad I/O.
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+
+# Run the CPU at its maximum clock.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Run-time stats for the system monitor's per-core CPU load.
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y

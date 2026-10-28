@@ -16,7 +16,7 @@
 #define MIC_CH_RIGHT ADC_CHANNEL_3 /* GPIO4 */
 
 #define RESULT_BYTES SOC_ADC_DIGI_RESULT_BYTES
-#define CONV_FRAME_RESULTS 128 /* DMA frame: 64 stereo frames = 4 ms */
+#define CONV_FRAME_RESULTS 32 /* DMA frame: 16 stereo frames = 1 ms */
 #define CONV_FRAME_BYTES (CONV_FRAME_RESULTS * RESULT_BYTES)
 #define STORE_BUF_BYTES (CONV_FRAME_BYTES * 8)
 

@@ -10,6 +10,7 @@
 #include <sys/types.h>
 
 #include "tty/hal_blit.h"
+#include "tty/tty.h"
 
 /* Default termios: like a typical Linux tty in cooked mode -- ICRNL on
  * input, ONLCR on output, ICANON+ECHO+ECHOE+ISIG, ^C/^\/DEL/^D as the
@@ -215,6 +216,42 @@ void macjr_tty_destroy(macjr_tty_t *tty) {
   free(tty->row_dirty);
   free(tty->cell_storage);
   free(tty);
+}
+
+struct macjr_tty_screen {
+  macjr_vc_t vc;          /* cursor, colors, parser state; .cells is not used */
+  macjr_cell_t cells[];   /* vc.rows * vc.cols */
+};
+
+macjr_tty_screen_t *macjr_tty_save_screen(macjr_tty_t *tty) {
+  if (!tty) {
+    return NULL;
+  }
+  size_t n = (size_t)tty->vc.rows * (size_t)tty->vc.cols;
+  macjr_tty_screen_t *s = (macjr_tty_screen_t *)malloc(sizeof(*s) + n * sizeof(macjr_cell_t));
+  if (!s) {
+    return NULL;
+  }
+  xSemaphoreTake(tty->vc_lock, portMAX_DELAY);
+  s->vc = tty->vc;
+  memcpy(s->cells, tty->cell_storage, n * sizeof(macjr_cell_t));
+  xSemaphoreGive(tty->vc_lock);
+  return s;
+}
+
+void macjr_tty_restore_screen(macjr_tty_t *tty, macjr_tty_screen_t *screen) {
+  if (!tty || !screen) {
+    free(screen);
+    return;
+  }
+  size_t n = (size_t)tty->vc.rows * (size_t)tty->vc.cols;
+  xSemaphoreTake(tty->vc_lock, portMAX_DELAY);
+  memcpy(tty->cell_storage, screen->cells, n * sizeof(macjr_cell_t));
+  tty->vc = screen->vc;
+  tty->vc.cells = tty->cell_storage;
+  memset(tty->row_dirty, 0xFF, (size_t)tty->row_dirty_words * sizeof(uint32_t));
+  xSemaphoreGive(tty->vc_lock);
+  free(screen);
 }
 
 macjr_vc_t *macjr_tty_vc(macjr_tty_t *tty) {

@@ -72,6 +72,14 @@ esp_err_t sdcard_init(void)
     return ESP_OK;
 }
 
+esp_err_t sdcard_info(uint64_t *total_bytes, uint64_t *free_bytes)
+{
+    if (!s_card) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return esp_vfs_fat_info(SDCARD_MOUNT_POINT, total_bytes, free_bytes);
+}
+
 void sdcard_deinit(void)
 {
     if (!s_card) {
