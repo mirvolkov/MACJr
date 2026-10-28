@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-/* MK-52 digit keys that pick menu entries. Key 3 has no menu entry yet. */
+/* MK-52 digit keys that pick menu entries. */
 #define BOOT_MENU_KEY_1 KEY_MK_1
 #define BOOT_MENU_KEY_2 KEY_MK_2
 #define BOOT_MENU_KEY_3 KEY_MK_3
@@ -16,6 +16,7 @@ extern "C" {
 typedef enum {
   BOOT_MODE_TTY_DEMO = 1, /* default: TTY + Turbo C IDE demo screen */
   BOOT_MODE_SDR_UAC = 2,  /* Si5351 LO for the Tayloe detector, I/Q out over USB UAC */
+  BOOT_MODE_MK52 = 3,     /* Elektronika MK-52 calculator */
 } boot_mode_t;
 
 /* Decide the startup mode: shows "MacJr <version>" and the mode list on

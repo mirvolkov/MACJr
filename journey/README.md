@@ -14,6 +14,8 @@ support came together: what we tried, what broke, and how we fixed it.
 | 5 | [Faster boot](05-faster-boot.md) | Config tuning, and a PSRAM test we rolled back |
 | 6 | [The system monitor](06-system-monitor.md) | A live overlay: CPU, RAM, temperature, SD card |
 | 7 | [Mapping the MK-52 keys](07-mk52-key-mapping.md) | 32 presses that turned key codes into calculator keys |
+| 8 | [An MK-52 inside the MK-52](08-mk52-calculator.md) | The calculator itself, tested on the Mac first |
+| 9 | [Catching a crash that hid from us](09-the-psram-hang.md) | A heisenbug found with JTAG: CPU0 stuck in the PSRAM heap |
 
 For the compact list of every step so far, open issues and what comes
 next, see [roadmap.txt](roadmap.txt).

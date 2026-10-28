@@ -34,14 +34,19 @@ CONFIG_FREERTOS_HZ=1000
 
 # Boot speed: skip app image validation when waking from deep sleep.
 CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP=y
-# Skip the destructive full-PSRAM pattern test at startup.
-# CONFIG_SPIRAM_MEMTEST is not set
-# The module's flash supports quad I/O.
-CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
-
-# Run the CPU at its maximum clock.
-CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+# Keep the boot-time PSRAM test. Without it we get hangs in the PSRAM heap
+# (malloc never returning, IWDT reset) at both 160 and 240 MHz; with it the
+# board runs fine. Root cause not found yet -- the test may only mask it.
+CONFIG_SPIRAM_MEMTEST=y
+# Flash runs in DIO. QIO was switched off while hunting the PSRAM heap hang
+# above; that hang also happened in DIO, so QIO was not its cause.
 
 # Run-time stats for the system monitor's per-core CPU load.
 CONFIG_FREERTOS_USE_TRACE_FACILITY=y
 CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+
+# app_main runs the MK-52 calculator, whose float formatting needs stack.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Run the CPU at its maximum clock.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y

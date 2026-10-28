@@ -1,4 +1,4 @@
 TODO: 
 
---- UAC mic is not good 
---- MK-52 emulator
+--- UAC mic is not good
+--- add SPI + component for showing img with mapped output

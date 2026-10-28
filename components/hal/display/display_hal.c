@@ -130,7 +130,7 @@ static bool ensure_row(macjr_hal_display_t *d, int x, int y, int w, int h)
 }
 
 /* Fill a solid rectangle. Called per cell (background) and for the cursor. */
-static void hal_fill_rect(macjr_hal_display_t *d, int x, int y, int w, int h, uint32_t rgb888)
+static void fill_band(macjr_hal_display_t *d, int x, int y, int w, int h, uint32_t rgb888)
 {
     if (!ensure_row(d, x, y, w, h)) {
         return;
@@ -151,8 +151,8 @@ static void hal_fill_rect(macjr_hal_display_t *d, int x, int y, int w, int h, ui
 }
 
 /* Expand a 1-bpp glyph mask (MSB = leftmost) into RGB565 in the row buffer. */
-static void hal_blit_1bpp(macjr_hal_display_t *d, int x, int y, int w, int h, int row_bytes,
-                          const uint8_t *bitmap, uint32_t fg_rgb888, uint32_t bg_rgb888)
+static void blit_band(macjr_hal_display_t *d, int x, int y, int w, int h, int row_bytes,
+                      const uint8_t *bitmap, uint32_t fg_rgb888, uint32_t bg_rgb888)
 {
     if (!ensure_row(d, x, y, w, h)) {
         return;
@@ -174,6 +174,25 @@ static void hal_blit_1bpp(macjr_hal_display_t *d, int x, int y, int w, int h, in
             uint8_t bit = (line[col >> 3] >> (7 - (col & 7))) & 1u;
             out[xx] = bit ? fg : bg;
         }
+    }
+}
+
+/* The row buffer holds ROW_BUF_CAP rows, so taller draws go in bands. */
+static void hal_fill_rect(macjr_hal_display_t *d, int x, int y, int w, int h, uint32_t rgb888)
+{
+    for (int done = 0; done < h; done += ROW_BUF_CAP) {
+        int bh = h - done < ROW_BUF_CAP ? h - done : ROW_BUF_CAP;
+        fill_band(d, x, y + done, w, bh, rgb888);
+    }
+}
+
+static void hal_blit_1bpp(macjr_hal_display_t *d, int x, int y, int w, int h, int row_bytes,
+                          const uint8_t *bitmap, uint32_t fg_rgb888, uint32_t bg_rgb888)
+{
+    for (int done = 0; done < h; done += ROW_BUF_CAP) {
+        int bh = h - done < ROW_BUF_CAP ? h - done : ROW_BUF_CAP;
+        blit_band(d, x, y + done, w, bh, row_bytes, bitmap + (size_t)done * row_bytes, fg_rgb888,
+                  bg_rgb888);
     }
 }
 

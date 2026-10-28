@@ -5,6 +5,7 @@
  *  - TTY demo: macjr_tty stack + static Turbo C IDE screen (ide_screen.c)
  *  - SDR + UAC: Si5351 I/Q LO for the Tayloe detector, ADC I/Q streamed
  *    to the host as a USB UAC microphone
+ *  - MK-52: Elektronika MK-52 calculator on the MK-52 keyboard (never returns)
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -26,6 +27,7 @@
 #include "mic.h"
 #include "sdr.h"
 #include "monitor.h"
+#include "mk52.h"
 
 static const char *TAG = "MACJR";
 
@@ -117,6 +119,11 @@ void app_main(void) {
   switch (mode) {
   case BOOT_MODE_SDR_UAC:
     run_sdr_uac(tty);
+    break;
+  case BOOT_MODE_MK52:
+    /* Never returns, so the monitor (on the Cx key) is not started and
+     * cannot steal the calculator's Cx presses. */
+    mk52_run(tty, display);
     break;
   case BOOT_MODE_TTY_DEMO:
   default:
