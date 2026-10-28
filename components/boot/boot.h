@@ -1,17 +1,17 @@
 #ifndef MACJR_BOOT_H
 #define MACJR_BOOT_H
 
+#include "keyboard.h"
 #include "tty/hal_display.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* Raw key codes of the "1" / "2" / "3" keys that pick menu entries. Key 3
- * has no menu entry yet. */
-#define BOOT_MENU_KEY_1 134
-#define BOOT_MENU_KEY_2 133
-#define BOOT_MENU_KEY_3 139
+/* MK-52 digit keys that pick menu entries. Key 3 has no menu entry yet. */
+#define BOOT_MENU_KEY_1 KEY_MK_1
+#define BOOT_MENU_KEY_2 KEY_MK_2
+#define BOOT_MENU_KEY_3 KEY_MK_3
 
 typedef enum {
   BOOT_MODE_TTY_DEMO = 1, /* default: TTY + Turbo C IDE demo screen */

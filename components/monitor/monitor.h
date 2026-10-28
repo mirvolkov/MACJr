@@ -2,14 +2,15 @@
 #define MACJR_MONITOR_H
 
 #include "esp_err.h"
+#include "keyboard.h"
 #include "tty/tty.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* Raw key code that opens / closes the monitor. */
-#define MONITOR_KEY 140
+/* Key that opens / closes the monitor (MK-52 Cx, see keyboard.h). */
+#define MONITOR_KEY KEY_MK_CX
 
 /* Start the monitor task. From then on MONITOR_KEY, pressed at any time,
  * saves the screen of `tty` and shows CPU load per core, internal RAM and
