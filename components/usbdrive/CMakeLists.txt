@@ -3,5 +3,5 @@
 idf_component_register(
   SRCS "usbdrive.c"
   INCLUDE_DIRS "."
-  REQUIRES tty sdcard usbdev monitor
+  REQUIRES display sdcard usbdev monitor
 )

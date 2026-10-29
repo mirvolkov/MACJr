@@ -3,5 +3,5 @@
 idf_component_register(
   SRCS "port.c"
   INCLUDE_DIRS "."
-  REQUIRES tty png sdcard
+  REQUIRES display png sdcard
 )

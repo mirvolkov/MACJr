@@ -3,5 +3,5 @@
 idf_component_register(
   SRCS "boot.c"
   INCLUDE_DIRS "."
-  REQUIRES tty keyboard esp_app_format
+  REQUIRES display keyboard esp_app_format
 )

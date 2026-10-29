@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define CH_GAMMA "\x82" /* CP737 Γ, stands in for Cyrillic Г */
+#define CH_GAMMA "\x83" /* CP866 Г */
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846

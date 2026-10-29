@@ -4,5 +4,5 @@ idf_component_register(
   SRCS "mk52.c" "mk52_core.c"
   INCLUDE_DIRS "."
   PRIV_INCLUDE_DIRS "private"
-  REQUIRES tty keyboard esp_timer
+  REQUIRES display keyboard esp_timer
 )

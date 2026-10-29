@@ -38,7 +38,7 @@
 #define TASK_PRIO 3
 #define BAR_W 20
 
-/* CP737 glyphs from the built-in font. */
+/* CP866 glyphs from the built-in font. */
 #define CH_FULL "\xDB"
 #define CH_SHADE "\xB0"
 #define CH_HLINE "\xC4"

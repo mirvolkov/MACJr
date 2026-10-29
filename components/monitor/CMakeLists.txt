@@ -3,5 +3,5 @@
 idf_component_register(
   SRCS "monitor.c"
   INCLUDE_DIRS "."
-  REQUIRES tty keyboard sdcard esp_driver_tsens esp_timer heap esp_psram
+  REQUIRES display keyboard sdcard esp_driver_tsens esp_timer heap esp_psram
 )

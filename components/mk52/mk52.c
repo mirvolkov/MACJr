@@ -2,12 +2,15 @@
  * MK-52 calculator app: draws the screen and feeds /dev/kbrd keys to the
  * calculator core (mk52_core.c).
  *
- *    Elektronika MK-52
+ *    Электроника МК-52
  *   ────────────────────────────────────────
  *
  *     -1.2345678-01               <- the VFD digit line, 24x64 per char
  *
- *   AUTO  F  DEG
+ *   АВТ   F  Г
+ *
+ * Labels are CP866 (the font's 128-255 page), written as \x escapes with
+ * the text in a comment. The angle names follow the MK-52's Р-ГРД-Г switch.
  *
  * The header and status line are tty text. The digit line uses the 8x16
  * font scaled 3x wide and 4x tall (24x64; 4x wide would not fit 13
@@ -47,6 +50,14 @@
 #define COLOR_BG 0x000000
 
 #define CH_HLINE "\xC4"
+
+#define TXT_TITLE "\x9D\xAB\xA5\xAA\xE2\xE0\xAE\xAD\xA8\xAA\xA0 \x8C\x8A-52" /* Электроника МК-52 */
+#define TXT_AUTO "\x80\x82\x92"   /* АВТ: run mode */
+#define TXT_PRG "\x8F\x90\x83"    /* ПРГ: program mode */
+#define TXT_RAD "\x90"            /* Р: radians */
+#define TXT_GRD "\x83\x90\x84"    /* ГРД: grads */
+#define TXT_DEG "\x83"            /* Г: degrees */
+#define TXT_RUN "\x91\x97\xF0\x92" /* СЧЁТ: a program is running */
 
 extern const uint8_t macjr_font_builtin_8x16[256][16];
 
@@ -104,7 +115,7 @@ static void draw_static(void) {
     strcat(rule, CH_HLINE);
   }
   out("\x1b[?25l\x1b[0m\x1b[2J");
-  out("\x1b[1;1H\x1b[92m Elektronika MK-52");
+  out("\x1b[1;1H\x1b[92m " TXT_TITLE);
   out("\x1b[2;1H\x1b[94m");
   out(rule);
 }
@@ -134,13 +145,13 @@ static void draw_big(const char *s) {
 }
 
 static void draw_state(const mk52_t *m) {
-  static const char *angle[] = {"RAD", "GRD", "DEG"};
+  static const char *angle[] = {TXT_RAD, TXT_GRD, TXT_DEG};
   char disp[32] = "";
   char line[64];
 
-  snprintf(line, sizeof(line), "\x1b[%d;1H\x1b[K\x1b[97m %-4s  \x1b[93m%c  \x1b[97m%s  \x1b[91m%s",
-           STATUS_ROW, m->mode == MK_MODE_PRG ? "PRG" : "AUTO", m->prefix ? m->prefix : ' ',
-           angle[m->angle], m->running ? "RUN" : "");
+  snprintf(line, sizeof(line), "\x1b[%d;1H\x1b[K\x1b[97m %-4s  \x1b[93m%c  \x1b[97m%-3s  \x1b[91m%s",
+           STATUS_ROW, m->mode == MK_MODE_PRG ? TXT_PRG : TXT_AUTO, m->prefix ? m->prefix : ' ',
+           angle[m->angle], m->running ? TXT_RUN : "");
   out(line);
   macjr_display_flush(s_tty);
 

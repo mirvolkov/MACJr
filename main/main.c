@@ -26,6 +26,7 @@
 #include "sdcard.h"
 #include "matmul_bench.h"
 #include "keyboard.h"
+#include "speaker.h"
 #include "mic.h"
 #include "sdr.h"
 #include "monitor.h"
@@ -35,9 +36,12 @@
 
 static const char *TAG = "MACJR";
 
-/* DEBUG ONLY: reads /dev/kbrd forever and logs every key code. Remove once
- * a real consumer (shell / tty input) reads the keyboard. */
-static void kbrd_debug_task(void *arg) {
+#define KEY_BEEP_HZ 2000
+#define KEY_BEEP_MS 50
+
+/* Reads /dev/kbrd forever: beeps on every key press and (DEBUG ONLY) logs
+ * the key codes. */
+static void kbrd_task(void *arg) {
   int fd = open(KBD_DEV_PATH, O_RDONLY);
   if (fd < 0) {
     ESP_LOGE(TAG, "open %s failed: errno %d", KBD_DEV_PATH, errno);
@@ -52,8 +56,10 @@ static void kbrd_debug_task(void *arg) {
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
+    /* one beep per read: keys pressed in the same instant share it */
+    speaker_beep(KEY_BEEP_HZ, KEY_BEEP_MS);
     for (ssize_t i = 0; i < n; i++) {
-      ESP_LOGI(TAG, "%s: key %u", KBD_DEV_PATH, keys[i]);
+      ESP_LOGI(TAG, "%s: key %u", KBD_DEV_PATH, keys[i]); /* DEBUG ONLY */
     }
   }
 }
@@ -103,10 +109,14 @@ void app_main(void) {
     ESP_LOGW(TAG, "sdcard_init failed, continuing without SD card");
   }
 
+  if (speaker_init() != ESP_OK) {
+    ESP_LOGW(TAG, "speaker_init failed, continuing without sound");
+  }
+
   if (keyboard_init() != ESP_OK) {
     ESP_LOGW(TAG, "keyboard init failed, continuing without keyboard");
   } else {
-    xTaskCreate(kbrd_debug_task, "kbrd_dbg", 3072, NULL, 4, NULL); /* DEBUG ONLY */
+    xTaskCreate(kbrd_task, "kbrd", 3072, NULL, 4, NULL);
   }
 
   macjr_hal_display_t *display = display_hal_init();

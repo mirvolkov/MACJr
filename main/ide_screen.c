@@ -33,8 +33,8 @@ static void put(macjr_tty_t *tty, int row, int col, const char *sgr, const void 
   macjr_tty_write(tty, data, len);
 }
 
-/* Double- and single-line box-drawing glyphs, CP737 layout
- * (components/tty/src/font_builtin.c). The editor window uses the double
+/* Double- and single-line box-drawing glyphs, CP866 layout
+ * (components/hal/display/tty/src/font_builtin.c). The editor window uses the double
  * line; the "Linking" dialog uses the single line, like the original. */
 #define DBL_TL 201 /* ╔ */
 #define DBL_TR 187 /* ╗ */

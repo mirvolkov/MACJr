@@ -16,6 +16,9 @@ extern "C" {
  * otherwise. `ctx` is whatever was passed in to speaker_write(). */
 typedef void (*speaker_write_cb_t)(void *ctx, esp_err_t result);
 
+/* Rate the speaker starts at, and goes back to after wav_play(). */
+#define SPEAKER_SAMPLE_RATE 8000
+
 /* Bring up the I2S TX channel (16-bit mono, standard mode) and the
  * background task that drains speaker_write() requests. Safe to call once
  * at startup. */
@@ -29,8 +32,22 @@ esp_err_t speaker_init(void);
  * pending-request queue is full or speaker_init() hasn't succeeded yet. */
 esp_err_t speaker_write(const int16_t *samples, size_t sample_count, speaker_write_cb_t on_complete, void *ctx);
 
+/* Switch the I2S clock to `hz`. The change is queued after the samples
+ * already handed to speaker_write(), and the call blocks until those have
+ * played and the new clock runs. One caller at a time. */
+esp_err_t speaker_set_sample_rate(uint32_t hz);
+
+/* The sample rate the speaker is playing at right now. */
+uint32_t speaker_sample_rate(void);
+
 /* Stop the speaker task and tear down the I2S channel. */
 void speaker_deinit(void);
+
+/* Queue a sine beep of `hz` for about `ms` (whole periods, so it starts
+ * and ends at zero: no click), at a quiet fixed level. Returns at once;
+ * the tone is generated at the current sample rate into its own buffer,
+ * freed once played. */
+esp_err_t speaker_beep(uint32_t hz, uint32_t ms);
 
 #ifdef __cplusplus
 }

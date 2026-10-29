@@ -93,7 +93,7 @@ void mk52_key(mk52_t *m, mk52_key_t key);
 bool mk52_step(mk52_t *m);
 
 /* Text of the 12-position VFD: "-1.2345678-01", "12.56637", "ЕГГОГ" (with
- * CP737 Gamma for Г) or, in PRG mode, "KK KK KK  AA". */
+ * CP866 Г) or, in PRG mode, "KK KK KK  AA". */
 void mk52_display(const mk52_t *m, char *out, size_t len);
 
 /* Two-character form of a program byte / address, using the MK glyphs for
