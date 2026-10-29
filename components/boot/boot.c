@@ -76,7 +76,8 @@ static void draw_menu(macjr_hal_display_t *d) {
   draw_text(d, 16, 56, "1 - Load TTY demo", COLOR_TEXT);
   draw_text(d, 16, 80, "2 - Init SDR with UAC output", COLOR_TEXT);
   draw_text(d, 16, 104, "3 - MK-52 calculator", COLOR_TEXT);
-  draw_text(d, 16, d->height_px - 24, "Select mode: press 1, 2 or 3", COLOR_HINT);
+  draw_text(d, 16, 128, "4 - SD card as USB drive", COLOR_TEXT);
+  draw_text(d, 16, d->height_px - 24, "Select mode: press 1-4", COLOR_HINT);
   if (d->end_frame) d->end_frame(d);
 }
 
@@ -102,6 +103,10 @@ static boot_mode_t wait_choice(void) {
     }
     if (key == BOOT_MENU_KEY_3) {
       mode = BOOT_MODE_MK52;
+      break;
+    }
+    if (key == BOOT_MENU_KEY_4) {
+      mode = BOOT_MODE_USB_DRIVE;
       break;
     }
     ESP_LOGI(TAG, "key %u is not a menu key", key);

@@ -1,7 +1,9 @@
 /*
- * USB OTG -> UAC 2.0 bridge for the mic HAL. usb_device_uac owns TinyUSB
- * and a mic task that asks for CONFIG_UAC_MIC_INTERVAL_MS worth of samples
- * every interval; we answer by blocking on mic_read(), so the ADC clock paces
+ * USB OTG -> UAC 2.0 bridge for the mic HAL. The usbdev HAL brings up
+ * TinyUSB in UAC mode; usb_device_uac (built with
+ * CONFIG_USB_DEVICE_UAC_AS_PART) adds the audio class and a mic task that
+ * asks for CONFIG_UAC_MIC_INTERVAL_MS worth of samples every interval; we
+ * answer by blocking on mic_read(), so the ADC clock paces
  * the stream. Channel count / sample rate / 16-bit format come from
  * sdkconfig and must match MIC_CHANNELS / MIC_SAMPLE_RATE.
  */
@@ -11,6 +13,7 @@
 
 #include "esp_log.h"
 #include "usb_device_uac.h"
+#include "usbdev.h"
 
 #if CONFIG_UAC_MIC_CHANNEL_NUM != MIC_CHANNELS
 #error "CONFIG_UAC_MIC_CHANNEL_NUM must equal MIC_CHANNELS"
@@ -43,10 +46,16 @@ static esp_err_t uac_input_cb(uint8_t *buf, size_t len, size_t *bytes_read, void
 }
 
 esp_err_t mic_uac_start(void) {
+  esp_err_t ret = usbdev_start(USBDEV_MODE_UAC);
+  if (ret != ESP_OK) {
+    return ret;
+  }
   uac_device_config_t cfg = {
+      .skip_tinyusb_init = true, /* usbdev already runs TinyUSB */
+      .mic_itf_num = USBDEV_ITF_MIC,
       .input_cb = uac_input_cb,
   };
-  esp_err_t ret = uac_device_init(&cfg);
+  ret = uac_device_init(&cfg);
   if (ret != ESP_OK) {
     ESP_LOGE(TAG, "uac_device_init failed: %s", esp_err_to_name(ret));
     return ret;

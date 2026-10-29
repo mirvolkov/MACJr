@@ -123,10 +123,13 @@ static void draw_stats(const cpu_sample_t *prev, const cpu_sample_t *cur) {
 
   line(6, "\x1b[96mMemory");
   mem_line(7, "SRAM", MALLOC_CAP_INTERNAL);
+#if CONFIG_SPIRAM
   if (esp_psram_is_initialized()) {
     mem_line(8, "PSRAM", MALLOC_CAP_SPIRAM);
-  } else {
-    line(8, "\x1b[97mPSRAM  not available");
+  } else
+#endif
+  {
+    line(8, "\x1b[97mPSRAM  disabled");
   }
 
   float celsius;

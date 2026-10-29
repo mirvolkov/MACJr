@@ -9,18 +9,18 @@ CONFIG_IDF_TARGET="esp32s3"
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
 
-# 8 MB Octal PSRAM @ 80 MHz
-CONFIG_SPIRAM=y
-CONFIG_SPIRAM_MODE_OCT=y
-CONFIG_SPIRAM_TYPE_AUTO=y
-CONFIG_SPIRAM_SPEED_80M=y
-CONFIG_SPIRAM_BOOT_INIT=y
-CONFIG_SPIRAM_USE_MALLOC=y
+# PSRAM off until explicitly needed. The octal PSRAM uses GPIO33-37, and the
+# LCD reset is on GPIO35: once lcd_init() took that pin, PSRAM data was
+# corrupted (heap hangs, IWDT resets). Before enabling PSRAM again, move
+# ST7789_RST off GPIO35 (and keep GPIO33-37 free), then restore:
+#   CONFIG_SPIRAM=y, CONFIG_SPIRAM_MODE_OCT=y, CONFIG_SPIRAM_SPEED_80M=y
+# CONFIG_SPIRAM is not set
 
 # USB OTG as UAC 2.0 device: 2-channel mic only (no speaker), 16 kHz/16-bit.
 # Must match MIC_CHANNELS / MIC_SAMPLE_RATE in components/hal/mic/mic.h.
-CONFIG_UAC_TUSB_MANUFACTURER="MACJr"
-CONFIG_UAC_TUSB_PRODUCT="MACJr Mic"
+# TinyUSB config and descriptors come from components/hal/usbdev (UAC mic
+# or SD card drive), so usb_device_uac runs as one part of that device.
+CONFIG_USB_DEVICE_UAC_AS_PART=y
 CONFIG_UAC_SPEAKER_CHANNEL_NUM=0
 CONFIG_UAC_MIC_CHANNEL_NUM=2
 CONFIG_UAC_SAMPLE_RATE=16000
@@ -34,10 +34,10 @@ CONFIG_FREERTOS_HZ=1000
 
 # Boot speed: skip app image validation when waking from deep sleep.
 CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP=y
-# Keep the boot-time PSRAM test. Without it we get hangs in the PSRAM heap
-# (malloc never returning, IWDT reset) at both 160 and 240 MHz; with it the
-# board runs fine. Root cause not found yet -- the test may only mask it.
-CONFIG_SPIRAM_MEMTEST=y
+# Keep FATFS sector buffers in internal RAM. In PSRAM the SD card's SPI DMA
+# writes into them while the cache holds the same lines, and the PSRAM heap
+# metadata got corrupted (malloc hanging forever, IWDT reset).
+# CONFIG_FATFS_ALLOC_PREFER_EXTRAM is not set
 # Flash runs in DIO. QIO was switched off while hunting the PSRAM heap hang
 # above; that hang also happened in DIO, so QIO was not its cause.
 

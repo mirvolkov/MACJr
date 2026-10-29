@@ -22,7 +22,8 @@
 #define ST7789_DC  45  // Data/Command
 #define ST7789_SCK 47  // SPI clock
 #define ST7789_SDA 21  // SPI data (MOSI)
-#define ST7789_RST 35  // Reset
+#define ST7789_RST 35  // Reset. GPIO35 is an octal-PSRAM data line: keep
+                           // PSRAM disabled (sdkconfig) or move this pin.
 
 // Display / SPI configuration
 #define LCD_HOST           SPI3_HOST

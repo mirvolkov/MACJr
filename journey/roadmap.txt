@@ -1,4 +1,15 @@
 TODO: 
 
---- UAC mic is not good
---- add SPI + component for showing img with mapped output
+- UAC mic is not good
+- test speaker + add some beep sounds (monitor/error codes/wav player)
+- add SPI + component for showing img with mapped output
+- usb mouse (nice to have)
+- RTOS (real time must be kept for SDR if possible)
+    sqlite based database for shared access
+    process model, memory paging, signal mechanism (IPC)
+    window system
+    stadrad library, crosscompiler...
+
+
+Extensions and improvements:
+- tango nano as keyboard scanner and PSRAM extension

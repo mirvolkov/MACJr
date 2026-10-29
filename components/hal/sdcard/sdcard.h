@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "esp_err.h"
+#include "sdmmc_cmd.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,6 +21,12 @@ esp_err_t sdcard_init(void);
 /* Filesystem size and free space of the mounted card. Returns
  * ESP_ERR_INVALID_STATE when no card is mounted. */
 esp_err_t sdcard_info(uint64_t *total_bytes, uint64_t *free_bytes);
+
+/* Give up the filesystem and open the card for raw sector access (e.g. to
+ * expose it as a USB drive): unmounts SDCARD_MOUNT_POINT if mounted, then
+ * re-initializes the card without FAT. `*out` stays valid for good; use it
+ * with sdmmc_read_sectors() / sdmmc_write_sectors(). */
+esp_err_t sdcard_open_raw(sdmmc_card_t **out);
 
 /* Unmount the card and free the SPI bus. */
 void sdcard_deinit(void);

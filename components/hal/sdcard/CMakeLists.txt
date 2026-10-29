@@ -3,5 +3,5 @@
 idf_component_register(
   SRCS "sdcard.c"
   INCLUDE_DIRS "."
-  REQUIRES fatfs esp_driver_sdspi
+  REQUIRES fatfs esp_driver_sdspi sdmmc
 )

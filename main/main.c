@@ -6,6 +6,7 @@
  *  - SDR + UAC: Si5351 I/Q LO for the Tayloe detector, ADC I/Q streamed
  *    to the host as a USB UAC microphone
  *  - MK-52: Elektronika MK-52 calculator on the MK-52 keyboard (never returns)
+ *  - USB drive: the SD card exposed to the host as a USB drive (never returns)
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -28,6 +29,7 @@
 #include "sdr.h"
 #include "monitor.h"
 #include "mk52.h"
+#include "usbdrive.h"
 
 static const char *TAG = "MACJR";
 
@@ -124,6 +126,9 @@ void app_main(void) {
     /* Never returns, so the monitor (on the Cx key) is not started and
      * cannot steal the calculator's Cx presses. */
     mk52_run(tty, display);
+    break;
+  case BOOT_MODE_USB_DRIVE:
+    usbdrive_run(tty); /* never returns; no monitor either */
     break;
   case BOOT_MODE_TTY_DEMO:
   default:
