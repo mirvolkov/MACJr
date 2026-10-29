@@ -25,6 +25,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "monitor.h"
 #include "sdcard.h"
 #include "usbdev.h"
 
@@ -36,6 +37,7 @@
 static const char *TAG = "usbdrive";
 
 static macjr_tty_t *s_tty;
+static volatile bool s_redraw; /* set when the monitor closes */
 
 typedef struct {
   char name[NAME_COLS + 1];
@@ -155,6 +157,11 @@ static void draw_status(const usbdev_msc_status_t *st, bool usb_ok) {
   macjr_display_flush(s_tty);
 }
 
+static void on_monitor_closed(void *ctx) {
+  (void)ctx;
+  s_redraw = true;
+}
+
 void usbdrive_run(macjr_tty_t *tty) {
   s_tty = tty;
   list_root();
@@ -172,11 +179,16 @@ void usbdrive_run(macjr_tty_t *tty) {
   draw_static(card);
   usbdev_msc_status_t last = {0}, now;
   draw_status(&last, usb_ok);
+  monitor_set_redraw_cb(on_monitor_closed, NULL);
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(REFRESH_MS));
+    if (monitor_is_open()) {
+      continue; /* the monitor owns the screen */
+    }
     usbdev_msc_status(&now);
-    if (now.mounted != last.mounted || now.ejected != last.ejected || now.bytes_read != last.bytes_read ||
-        now.bytes_written != last.bytes_written) {
+    if (s_redraw || now.mounted != last.mounted || now.ejected != last.ejected ||
+        now.bytes_read != last.bytes_read || now.bytes_written != last.bytes_written) {
+      s_redraw = false;
       last = now;
       draw_status(&now, usb_ok);
     }

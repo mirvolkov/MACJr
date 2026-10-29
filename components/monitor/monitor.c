@@ -34,7 +34,7 @@
 
 #define REFRESH_MS 1000
 #define POLL_MS 50       /* key polling while the monitor is shown */
-#define TASK_STACK 4096
+#define TASK_STACK 6144 /* the redraw callback may decode a PNG */
 #define TASK_PRIO 3
 #define BAR_W 20
 
@@ -46,6 +46,9 @@
 static const char *TAG = "monitor";
 
 static macjr_tty_t *s_tty;
+static volatile bool s_open;
+static monitor_redraw_cb_t s_redraw_cb;
+static void *s_redraw_ctx;
 static temperature_sensor_handle_t s_tsens;
 
 typedef struct {
@@ -153,9 +156,11 @@ static void draw_stats(const cpu_sample_t *prev, const cpu_sample_t *cur) {
 
 /* Show the monitor until MONITOR_KEY comes in again on fd. */
 static void run_monitor(int fd) {
+  s_open = true; /* apps stop drawing before the screen is saved */
   macjr_tty_screen_t *saved = macjr_tty_save_screen(s_tty);
   if (!saved) {
     ESP_LOGE(TAG, "no memory to save the screen");
+    s_open = false;
     return;
   }
 
@@ -183,6 +188,19 @@ static void run_monitor(int fd) {
   fcntl(fd, F_SETFL, 0);
   macjr_tty_restore_screen(s_tty, saved);
   macjr_display_flush(s_tty);
+  s_open = false;
+  if (s_redraw_cb) {
+    s_redraw_cb(s_redraw_ctx); /* repaint what the app drew outside the tty */
+  }
+}
+
+bool monitor_is_open(void) {
+  return s_open;
+}
+
+void monitor_set_redraw_cb(monitor_redraw_cb_t cb, void *ctx) {
+  s_redraw_ctx = ctx;
+  s_redraw_cb = cb;
 }
 
 static void monitor_task(void *arg) {

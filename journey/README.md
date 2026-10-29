@@ -17,6 +17,7 @@ support came together: what we tried, what broke, and how we fixed it.
 | 8 | [An MK-52 inside the MK-52](08-mk52-calculator.md) | The calculator itself, tested on the Mac first |
 | 9 | [Catching a crash that hid from us](09-the-psram-hang.md) | A heisenbug found with JTAG: CPU0 stuck in the PSRAM heap |
 | 10 | [The SD card as a USB drive](10-usb-sd-drive.md) | One TinyUSB stack, two devices: microphone or card reader |
+| 11 | [A picture from the SD card](11-png-port-layout.md) | Our own streaming PNG decoder on the ROM's inflater |
 
 For the compact list of every step so far, open issues and what comes
 next, see [roadmap.txt](roadmap.txt).

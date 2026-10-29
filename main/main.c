@@ -7,6 +7,7 @@
  *    to the host as a USB UAC microphone
  *  - MK-52: Elektronika MK-52 calculator on the MK-52 keyboard (never returns)
  *  - USB drive: the SD card exposed to the host as a USB drive (never returns)
+ *  - Port: the port layout picture IMG/layout.png from the SD card
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -30,6 +31,7 @@
 #include "monitor.h"
 #include "mk52.h"
 #include "usbdrive.h"
+#include "port.h"
 
 static const char *TAG = "MACJR";
 
@@ -90,6 +92,12 @@ static void run_sdr_uac(macjr_tty_t *tty) {
   macjr_display_flush(tty);
 }
 
+static void start_monitor(macjr_tty_t *tty) {
+  if (monitor_start(tty) != ESP_OK) {
+    ESP_LOGW(TAG, "monitor_start failed");
+  }
+}
+
 void app_main(void) {
   if (sdcard_init() != ESP_OK) {
     ESP_LOGW(TAG, "sdcard_init failed, continuing without SD card");
@@ -118,17 +126,22 @@ void app_main(void) {
   struct macjr_winsize *ws = macjr_tty_winsize(tty);
   ESP_LOGI(TAG, "tty up: %ux%u chars on %ux%u px", ws->ws_col, ws->ws_row, ws->ws_xpixel, ws->ws_ypixel);
 
+  /* The monitor (key Cx) runs in every mode except the calculator, which
+   * needs Cx itself. Apps that don't return start it first. */
   switch (mode) {
   case BOOT_MODE_SDR_UAC:
     run_sdr_uac(tty);
     break;
   case BOOT_MODE_MK52:
-    /* Never returns, so the monitor (on the Cx key) is not started and
-     * cannot steal the calculator's Cx presses. */
-    mk52_run(tty, display);
+    mk52_run(tty, display); /* never returns */
     break;
   case BOOT_MODE_USB_DRIVE:
-    usbdrive_run(tty); /* never returns; no monitor either */
+    start_monitor(tty);
+    usbdrive_run(tty); /* never returns */
+    break;
+  case BOOT_MODE_PORT:
+    port_show(tty, display);
+    monitor_set_redraw_cb(port_redraw, NULL); /* the picture is not in the tty */
     break;
   case BOOT_MODE_TTY_DEMO:
   default:
@@ -138,7 +151,5 @@ void app_main(void) {
 
   /* Started after the mode has drawn its screen, so the monitor saves and
    * later restores that screen. */
-  if (monitor_start(tty) != ESP_OK) {
-    ESP_LOGW(TAG, "monitor_start failed");
-  }
+  start_monitor(tty);
 }

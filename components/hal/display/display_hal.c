@@ -177,6 +177,29 @@ static void blit_band(macjr_hal_display_t *d, int x, int y, int w, int h, int ro
     }
 }
 
+/* Convert packed RGB888 pixels into RGB565 in the row buffer. */
+static void rgb_band(macjr_hal_display_t *d, int x, int y, int w, int h, const uint8_t *rgb)
+{
+    if (!ensure_row(d, x, y, w, h)) {
+        return;
+    }
+    for (int row = 0; row < h; row++) {
+        int yy = y + row;
+        if (yy < 0 || yy >= d->height_px) {
+            continue;
+        }
+        const uint8_t *src = rgb + (size_t)row * w * 3;
+        uint16_t *out = &s_row_buf[(size_t)(yy - s_row_y0) * (size_t)d->width_px];
+        for (int col = 0; col < w; col++, src += 3) {
+            int xx = x + col;
+            if (xx < 0 || xx >= d->width_px) {
+                continue;
+            }
+            out[xx] = rgb_to_565(src[0], src[1], src[2]);
+        }
+    }
+}
+
 /* The row buffer holds ROW_BUF_CAP rows, so taller draws go in bands. */
 static void hal_fill_rect(macjr_hal_display_t *d, int x, int y, int w, int h, uint32_t rgb888)
 {
@@ -193,6 +216,14 @@ static void hal_blit_1bpp(macjr_hal_display_t *d, int x, int y, int w, int h, in
         int bh = h - done < ROW_BUF_CAP ? h - done : ROW_BUF_CAP;
         blit_band(d, x, y + done, w, bh, row_bytes, bitmap + (size_t)done * row_bytes, fg_rgb888,
                   bg_rgb888);
+    }
+}
+
+static void hal_blit_rgb888(macjr_hal_display_t *d, int x, int y, int w, int h, const uint8_t *rgb)
+{
+    for (int done = 0; done < h; done += ROW_BUF_CAP) {
+        int bh = h - done < ROW_BUF_CAP ? h - done : ROW_BUF_CAP;
+        rgb_band(d, x, y + done, w, bh, rgb + (size_t)done * w * 3);
     }
 }
 
@@ -219,5 +250,6 @@ macjr_hal_display_t *display_hal_init(void)
     hal.end_frame = hal_end_frame;
     hal.fill_rect = hal_fill_rect;
     hal.blit_1bpp_mask = hal_blit_1bpp;
+    hal.blit_rgb888 = hal_blit_rgb888;
     return &hal;
 }

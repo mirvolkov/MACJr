@@ -13,12 +13,14 @@ extern "C" {
 #define BOOT_MENU_KEY_2 KEY_MK_2
 #define BOOT_MENU_KEY_3 KEY_MK_3
 #define BOOT_MENU_KEY_4 KEY_MK_4
+#define BOOT_MENU_KEY_5 KEY_MK_5
 
 typedef enum {
   BOOT_MODE_TTY_DEMO = 1, /* default: TTY + Turbo C IDE demo screen */
   BOOT_MODE_SDR_UAC = 2,  /* Si5351 LO for the Tayloe detector, I/Q out over USB UAC */
   BOOT_MODE_MK52 = 3,     /* Elektronika MK-52 calculator */
   BOOT_MODE_USB_DRIVE = 4, /* SD card exposed to the host as a USB drive */
+  BOOT_MODE_PORT = 5,     /* port layout picture from the SD card */
 } boot_mode_t;
 
 /* Decide the startup mode: shows "MacJr <version>" and the mode list on

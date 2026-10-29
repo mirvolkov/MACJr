@@ -27,6 +27,10 @@ struct macjr_hal_display {
    */
   void (*blit_1bpp_mask)(macjr_hal_display_t *d, int x, int y, int w, int h, int row_bytes,
                          const uint8_t *bitmap, uint32_t fg_rgb888, uint32_t bg_rgb888);
+
+  /* Optional: draw a w x h true-color image, 3 bytes per pixel (R, G, B),
+   * rows packed (w * 3 bytes each). NULL if the panel can't do it. */
+  void (*blit_rgb888)(macjr_hal_display_t *d, int x, int y, int w, int h, const uint8_t *rgb);
 };
 
 #endif
