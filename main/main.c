@@ -27,6 +27,7 @@
 #include "matmul_bench.h"
 #include "keyboard.h"
 #include "speaker.h"
+#include "db.h"
 #include "mic.h"
 #include "sdr.h"
 #include "monitor.h"
@@ -107,6 +108,8 @@ static void start_monitor(macjr_tty_t *tty) {
 void app_main(void) {
   if (sdcard_init() != ESP_OK) {
     ESP_LOGW(TAG, "sdcard_init failed, continuing without SD card");
+  } else if (db_init() != ESP_OK) {
+    ESP_LOGW(TAG, "db_init failed, continuing without config");
   }
 
   if (speaker_init() != ESP_OK) {

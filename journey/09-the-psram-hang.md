@@ -74,3 +74,21 @@ be masking the problem. The next step, when needed, is to keep driver
 memory out of PSRAM with `CONFIG_SPIRAM_USE_CAPS_ALLOC`. The lesson stays
 either way: when prints make a bug disappear, stop printing and attach a
 debugger.
+
+## The real cause, found later
+
+Story 10 brought the crash back and finally explained it: the LCD reset
+line was wired to GPIO35, and on the N16R8 module GPIO33-37 are the octal
+PSRAM's data lines. Once `lcd_init()` drove that pin, PSRAM reads and
+writes were corrupted, which is exactly what the broken heap lists looked
+like. The boot test had only hidden it by touching PSRAM before the LCD
+started.
+
+The reset wire moved to GPIO14, a free pin, and the code followed:
+
+```c
+#define ST7789_RST 14  // Reset (was GPIO35, an octal-PSRAM data line)
+```
+
+**Final result:** PSRAM is on again, 8 MB in octal mode at 80 MHz, with no
+boot-time test, and the crashes are gone. GPIO33-37 stay free from now on.

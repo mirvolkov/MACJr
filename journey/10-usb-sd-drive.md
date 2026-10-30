@@ -77,8 +77,9 @@ Starting the drive brought back the watchdog resets from story 9, right
 after `USB device up`. Its console still worked, because every log line
 also goes out of UART0 on the board's second USB-C port. Chasing it led
 to the real cause: the LCD reset line is on GPIO35, which is one of the
-octal PSRAM's data lines. PSRAM is now off until a free pin is found for
-the LCD reset.
+octal PSRAM's data lines. PSRAM was turned off until the reset wire
+could move. It later went to GPIO14, and PSRAM is back on (see the end of
+story 9).
 
 **Result:** boot option 4 shares the SD card with a computer at USB
 full speed (up to about 1 MB/s). The file list on screen is the card as

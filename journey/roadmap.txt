@@ -1,8 +1,7 @@
 TODO: 
 
 - UAC mic is not good
-- test speaker + add some beep sounds (monitor/error codes/wav player)
-- add SPI + component for showing img with mapped output
+- multiple key scancodes + update symbol table with cyrillic + fix some symbols
 - usb mouse (nice to have)
 - RTOS (real time must be kept for SDR if possible)
     sqlite based database for shared access
@@ -13,3 +12,10 @@ TODO:
 
 Extensions and improvements:
 - tango nano as keyboard scanner and PSRAM extension
+- extend external port with SPI 
+
+
+Apps:
+- audio player
+- mc (or volkov commander analog - there are decompiled sources somewhere)
+- sdr player + waterfall

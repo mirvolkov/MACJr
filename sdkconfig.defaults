@@ -9,12 +9,13 @@ CONFIG_IDF_TARGET="esp32s3"
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
 
-# PSRAM off until explicitly needed. The octal PSRAM uses GPIO33-37, and the
-# LCD reset is on GPIO35: once lcd_init() took that pin, PSRAM data was
-# corrupted (heap hangs, IWDT resets). Before enabling PSRAM again, move
-# ST7789_RST off GPIO35 (and keep GPIO33-37 free), then restore:
-#   CONFIG_SPIRAM=y, CONFIG_SPIRAM_MODE_OCT=y, CONFIG_SPIRAM_SPEED_80M=y
-# CONFIG_SPIRAM is not set
+# 8 MB octal PSRAM (N16R8). It uses GPIO33-37: keep them free (the LCD
+# reset used to be on GPIO35, which corrupted PSRAM data -- heap hangs,
+# IWDT resets; it is on GPIO14 now). No memory test at boot: it is slow.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+# CONFIG_SPIRAM_MEMTEST is not set
 
 # USB OTG as UAC 2.0 device: 2-channel mic only (no speaker), 16 kHz/16-bit.
 # Must match MIC_CHANNELS / MIC_SAMPLE_RATE in components/hal/mic/mic.h.
