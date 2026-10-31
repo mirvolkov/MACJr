@@ -13,7 +13,7 @@ TODO:
 Extensions and improvements:
 - tango nano as keyboard scanner and PSRAM extension
 - extend external port with SPI 
-
+- IR port
 
 Apps:
 - audio player

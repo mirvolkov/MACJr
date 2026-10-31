@@ -20,7 +20,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#define DB_TMP SDCARD_MOUNT_POINT "/config.tmp"
+#define DB_TMP DB_DIR "/config.tmp"
 #define COPY_CHUNK 256
 
 static const char *TAG = "db";
@@ -171,6 +171,11 @@ esp_err_t db_init(void) {
     }
   }
   lock();
+  if (!exists(DB_DIR) && mkdir(DB_DIR, 0777) != 0) {
+    ESP_LOGE(TAG, "cannot create %s", DB_DIR);
+    unlock();
+    return ESP_FAIL;
+  }
   if (exists(DB_TMP)) {
     if (exists(DB_PATH)) {
       unlink(DB_TMP); /* an unfinished rewrite: the original is intact */
@@ -207,9 +212,12 @@ esp_err_t db_create(const char *key, const char *value) {
     if (find(f, key, &line, NULL, 0, NULL)) {
       ret = ESP_ERR_NOT_ALLOWED;
     } else {
-      /* start on a new line if the last one has no line break */
+      /* start on a new line if the last one has no line break. Never seek
+       * before the start: FatFs takes the offset as unsigned and, on a
+       * file open for writing, grows the file to that size (4 GB for -1). */
       bool need_nl = false;
-      if (fseek(f, -1, SEEK_END) == 0) {
+      long size = fseek(f, 0, SEEK_END) == 0 ? ftell(f) : -1;
+      if (size > 0 && fseek(f, size - 1, SEEK_SET) == 0) {
         int last = getc(f);
         need_nl = last != EOF && last != '\n' && last != '\r';
       }

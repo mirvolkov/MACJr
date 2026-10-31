@@ -27,9 +27,11 @@ extern "C" {
  * can be handed to USB at any time; calls then fail with ESP_FAIL). Calls
  * are thread-safe. Before db_init() they return ESP_ERR_INVALID_STATE.
  */
-#define DB_PATH SDCARD_MOUNT_POINT "/config.db"
+#define DB_DIR SDCARD_MOUNT_POINT "/DB"
+#define DB_PATH DB_DIR "/config.db"
 
-/* Create DB_PATH if it doesn't exist. Needs the SD card mounted. */
+/* Create DB_DIR and DB_PATH if they don't exist. Needs the SD card
+ * mounted. */
 esp_err_t db_init(void);
 
 /* Add a new pair. ESP_ERR_NOT_ALLOWED if the key already exists. */

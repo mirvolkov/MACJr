@@ -3,8 +3,8 @@
  * display), asks the boot menu which mode to start (see components/boot),
  * then runs it:
  *  - TTY demo: macjr_tty stack + static Turbo C IDE screen (ide_screen.c)
- *  - SDR + UAC: Si5351 I/Q LO for the Tayloe detector, ADC I/Q streamed
- *    to the host as a USB UAC microphone
+ *  - SDR + UAC: SoftRock SDR -- Si5351 I/Q LO tuned from the keyboard, ADC
+ *    I/Q streamed to the host as a USB UAC microphone (never returns)
  *  - MK-52: Elektronika MK-52 calculator on the MK-52 keyboard (never returns)
  *  - USB drive: the SD card exposed to the host as a USB drive (never returns)
  *  - Port: the port layout picture IMG/layout.png from the SD card
@@ -28,12 +28,11 @@
 #include "keyboard.h"
 #include "speaker.h"
 #include "db.h"
-#include "mic.h"
-#include "sdr.h"
 #include "monitor.h"
 #include "mk52.h"
 #include "usbdrive.h"
 #include "port.h"
+#include "radio.h"
 
 static const char *TAG = "MACJR";
 
@@ -77,26 +76,6 @@ static void run_tty_demo(macjr_tty_t *tty) {
   macjr_display_flush(tty);
   int64_t flush_us = esp_timer_get_time() - flush_start_us;
   ESP_LOGI(TAG, "display flush took %lld.%03lld ms", flush_us / 1000, flush_us % 1000);
-}
-
-/* UAC takes the native USB port away from USB-Serial-JTAG, so this mode is
- * only entered from the boot menu; the default boot keeps flashing/console
- * on that port working. */
-static void run_sdr_uac(macjr_tty_t *tty) {
-  const char *clear = "\x1b[2J\x1b[?25l";
-  macjr_tty_write(tty, clear, strlen(clear));
-
-  const char *status;
-  if (sdr_init() != ESP_OK) {
-    status = "SDR: Si5351 init failed\r\n";
-  } else if (mic_init() != ESP_OK || mic_uac_start() != ESP_OK) {
-    status = "SDR: LO 7.055 MHz I/Q\r\nUAC: mic init failed\r\n";
-  } else {
-    status = "SDR: LO 7.055 MHz I/Q\r\nUAC: streaming I/Q as USB mic\r\n";
-  }
-  ESP_LOGI(TAG, "%s", status);
-  macjr_tty_write(tty, status, strlen(status));
-  macjr_display_flush(tty);
 }
 
 static void start_monitor(macjr_tty_t *tty) {
@@ -143,7 +122,8 @@ void app_main(void) {
    * needs Cx itself. Apps that don't return start it first. */
   switch (mode) {
   case BOOT_MODE_SDR_UAC:
-    run_sdr_uac(tty);
+    start_monitor(tty);
+    radio_run(tty); /* never returns */
     break;
   case BOOT_MODE_MK52:
     mk52_run(tty, display); /* never returns */
