@@ -20,6 +20,7 @@ support came together: what we tried, what broke, and how we fixed it.
 | 11 | [A picture from the SD card](11-png-port-layout.md) | Our own streaming PNG decoder on the ROM's inflater |
 | 12 | [A config file of our own](12-config-db.md) | A key=value store on the SD card, with a crash-safe rewrite |
 | 13 | [Programs from the SD card](13-programs-from-sd.md) | ELF apps loaded into PSRAM and run on the second core |
+| 14 | [An IR port](14-ir-remote.md) | A receiver ported from MicroPython, an RMT transmitter, and a remote control |
 
 For the compact list of every step so far, open issues and what comes
 next, see [roadmap.txt](roadmap.txt).
@@ -27,4 +28,5 @@ next, see [roadmap.txt](roadmap.txt).
 The hardware: ESP32-S3-WROOM-1 N16R8 (16 MB flash, 8 MB PSRAM), a 320x240
 ST7789 display (a 40x15 text screen with an 8x16 font), an SD card, an
 MCP23018 I/O expander wired to the MK-52 keyboard, an Si5351 clock
-generator driving a Tayloe detector, and two analog inputs on the ADC.
+generator driving a Tayloe detector, and an IR port (receiver on GPIO5,
+LED on GPIO4) that replaced the two analog inputs.

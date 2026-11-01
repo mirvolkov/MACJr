@@ -3,6 +3,7 @@
 
 #include "esp_err.h"
 #include "sdcard.h"
+#include "macjr.h"
 #include "tty/tty.h"
 
 #ifdef __cplusplus
@@ -35,6 +36,10 @@ esp_err_t exec_spawn(macjr_tty_t *tty, const char *path, int argc, char **argv, 
  * on a cleared screen, then show its exit code or why it couldn't run and
  * wait for В↑. */
 void exec_launch(macjr_tty_t *tty, const char *path);
+
+/* exec_launch() for a program built into the firmware: `entry` is its
+ * main(), `name` its argv[0]. For development: no SD card round trip. */
+void exec_launch_main(macjr_tty_t *tty, const char *name, macjr_main_t entry);
 
 #ifdef __cplusplus
 }

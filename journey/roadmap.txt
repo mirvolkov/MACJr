@@ -1,6 +1,8 @@
 TODO: 
 
 - UAC mic is not good
+- radio still calls mic_init(): the mic inputs are gone, and GPIO4 is the IR LED now
+- REMOTE: move from the firmware (boot menu built-in) to apps/ when done
 - multiple key scancodes + update symbol table with cyrillic + fix some symbols
 - usb mouse (nice to have)
 - RTOS (real time must be kept for SDR if possible)
@@ -12,8 +14,8 @@ TODO:
 
 Extensions and improvements:
 - tango nano as keyboard scanner and PSRAM extension
-- extend external port with SPI 
-- IR port
+- extend external port with SPI
+- VGA output with 80x25 screen size
 
 Apps:
 - audio player, volume control

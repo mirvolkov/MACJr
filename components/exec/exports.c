@@ -26,6 +26,8 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "ir_rx.h"
+#include "ir_tx.h"
 #include "macjr.h"
 #include "mic.h"
 #include "monitor.h"
@@ -58,6 +60,11 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(db_create),
   ESP_ELFSYM_EXPORT(db_read),
   ESP_ELFSYM_EXPORT(db_update),
+  ESP_ELFSYM_EXPORT(ir_rx_read),
+  ESP_ELFSYM_EXPORT(ir_rx_last_burst),
+  ESP_ELFSYM_EXPORT(ir_proto_name),
+  ESP_ELFSYM_EXPORT(ir_tx_send),
+  ESP_ELFSYM_EXPORT(ir_tx_send_raw),
   ESP_ELFSYM_EXPORT(mic_init),
   ESP_ELFSYM_EXPORT(mic_uac_start),
   ESP_ELFSYM_EXPORT(sdr_init),

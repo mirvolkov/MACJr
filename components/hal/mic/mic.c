@@ -12,8 +12,8 @@
 #include "esp_adc/adc_continuous.h"
 
 #define MIC_ADC_UNIT ADC_UNIT_1
-#define MIC_CH_LEFT ADC_CHANNEL_2  /* GPIO3 */
-#define MIC_CH_RIGHT ADC_CHANNEL_3 /* GPIO4 */
+#define MIC_CH_LEFT ADC_CHANNEL_5  /* GPIO3 */
+#define MIC_CH_RIGHT ADC_CHANNEL_6 /* GPIO4 */
 
 #define RESULT_BYTES SOC_ADC_DIGI_RESULT_BYTES
 #define CONV_FRAME_RESULTS 32 /* DMA frame: 16 stereo frames = 1 ms */

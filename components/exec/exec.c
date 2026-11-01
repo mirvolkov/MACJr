@@ -113,6 +113,23 @@ static esp_err_t read_file(const char *path, uint8_t **out, size_t *out_size) {
   return ESP_OK;
 }
 
+/* Run `entry` in the calling task with a fresh keyboard queue and
+ * sys_exit() armed; its exit code. */
+static int run_main(macjr_tty_t *tty, macjr_main_t entry, int argc, char **argv) {
+  s_kbd = open(KBD_DEV_PATH, O_RDONLY); /* fresh queue: no keys from before */
+  if (setjmp(s_exit_jmp) == 0) {
+    s_exit_status = entry(argc, argv, tty);
+  }
+  if (s_kbd >= 0) {
+    close(s_kbd);
+    s_kbd = -1;
+  }
+  /* undo what the program may have set: its code may be about to go */
+  monitor_set_redraw_cb(NULL, NULL);
+  monitor_set_enabled(true);
+  return s_exit_status;
+}
+
 esp_err_t exec_run(macjr_tty_t *tty, const char *path, int argc, char **argv, int *status) {
   static bool registered;
   if (!registered) {
@@ -145,30 +162,19 @@ esp_err_t exec_run(macjr_tty_t *tty, const char *path, int argc, char **argv, in
   }
   ESP_LOGI(TAG, "%s: %u bytes, main at %p, CPU%d", path, (unsigned)size, (void *)elf.entry, xPortGetCoreID());
 
-  s_kbd = open(KBD_DEV_PATH, O_RDONLY); /* fresh queue: no keys from before */
-  if (setjmp(s_exit_jmp) == 0) {
-    /* elf.entry directly, not esp_elf_request(): that one drops the
-     * return value of main() and has no room for the tty. The loader
-     * types the entry as main(argc, argv); ours takes the tty as well. */
-    macjr_main_t entry = (macjr_main_t)(uintptr_t)elf.entry;
-    s_exit_status = entry(argc, argv, tty);
-  }
-  if (s_kbd >= 0) {
-    close(s_kbd);
-    s_kbd = -1;
-  }
-  /* undo what the program may have set: its code is about to go */
-  monitor_set_redraw_cb(NULL, NULL);
-  monitor_set_enabled(true);
+  /* elf.entry directly, not esp_elf_request(): that one drops the
+   * return value of main() and has no room for the tty. The loader types
+   * the entry as main(argc, argv); ours takes the tty as well. */
+  *status = run_main(tty, (macjr_main_t)(uintptr_t)elf.entry, argc, argv);
   esp_elf_deinit(&elf);
-  ESP_LOGI(TAG, "%s: exit code %d", path, s_exit_status);
-  *status = s_exit_status;
+  ESP_LOGI(TAG, "%s: exit code %d", path, *status);
   return ESP_OK;
 }
 
 typedef struct {
   macjr_tty_t *tty;
   const char *path;
+  macjr_main_t entry; /* built-in program: run this instead of loading `path` */
   int argc;
   char **argv;
   int status;
@@ -178,15 +184,22 @@ typedef struct {
 
 static void spawn_task(void *arg) {
   spawn_job_t *job = arg;
-  job->ret = exec_run(job->tty, job->path, job->argc, job->argv, &job->status);
+  if (job->entry) {
+    job->status = run_main(job->tty, job->entry, job->argc, job->argv);
+    job->ret = ESP_OK;
+  } else {
+    job->ret = exec_run(job->tty, job->path, job->argc, job->argv, &job->status);
+  }
   xTaskNotifyGive(job->waiter);
   vTaskDelete(NULL);
 }
 
-esp_err_t exec_spawn(macjr_tty_t *tty, const char *path, int argc, char **argv, int *status) {
+static esp_err_t spawn(macjr_tty_t *tty, const char *path, macjr_main_t entry, int argc, char **argv,
+                       int *status) {
   spawn_job_t job = {
     .tty = tty,
     .path = path,
+    .entry = entry,
     .argc = argc,
     .argv = argv,
     .waiter = xTaskGetCurrentTaskHandle(),
@@ -200,16 +213,20 @@ esp_err_t exec_spawn(macjr_tty_t *tty, const char *path, int argc, char **argv, 
   return job.ret;
 }
 
-void exec_launch(macjr_tty_t *tty, const char *path) {
+esp_err_t exec_spawn(macjr_tty_t *tty, const char *path, int argc, char **argv, int *status) {
+  return spawn(tty, path, NULL, argc, argv, status);
+}
+
+/* exec_launch() of the program at `path`, or of `entry` if set. */
+static void launch(macjr_tty_t *tty, const char *name, const char *path, macjr_main_t entry) {
   const char *clear = "\x1b[0m\x1b[2J\x1b[H\x1b[?25l";
   macjr_tty_write(tty, clear, strlen(clear));
   macjr_display_flush(tty);
 
-  const char *name = strrchr(path, '/') ? strrchr(path, '/') + 1 : path;
   char *argv[] = {(char *)name, NULL};
   size_t heap_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   int status = 0;
-  esp_err_t ret = exec_spawn(tty, path, 1, argv, &status);
+  esp_err_t ret = spawn(tty, path, entry, 1, argv, &status);
   size_t heap_after = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   if (heap_before != heap_after) {
     ESP_LOGW(TAG, "PSRAM free %u -> %u bytes", (unsigned)heap_before, (unsigned)heap_after);
@@ -244,4 +261,12 @@ void exec_launch(macjr_tty_t *tty, const char *path) {
   if (kbd >= 0) {
     close(kbd);
   }
+}
+
+void exec_launch(macjr_tty_t *tty, const char *path) {
+  launch(tty, strrchr(path, '/') ? strrchr(path, '/') + 1 : path, path, NULL);
+}
+
+void exec_launch_main(macjr_tty_t *tty, const char *name, macjr_main_t entry) {
+  launch(tty, name, NULL, entry);
 }

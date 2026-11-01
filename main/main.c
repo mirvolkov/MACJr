@@ -1,9 +1,10 @@
 /*
- * Firmware entry point: brings up the board HALs (SD card, keyboard, ST7789
- * display), starts the system monitor (key Cx), then loops over the boot
+ * Firmware entry point: brings up the board HALs (SD card, keyboard, IR
+ * receiver, ST7789 display), starts the system monitor (key Cx), then loops over the boot
  * menu (components/boot) and the program picked there: one from /BIN on
  * the SD card, loaded and run by components/exec (apps/: IDE demo, MK-52
- * calculator, SoftRock SDR radio, USB drive, port layout picture, hello).
+ * calculator, SoftRock SDR radio, USB drive, port layout picture, hello),
+ * or one built in while it is developed (s_builtins).
  * В↑ goes back to the menu when a program ends; programs that never return
  * (radio, USB drive, MK-52) stay until the next reboot.
  */
@@ -26,8 +27,17 @@
 #include "db.h"
 #include "monitor.h"
 #include "exec.h"
+#include "ir_rx.h"
+#include "ir_tx.h"
+#include "remotecontrol.h"
 
 static const char *TAG = "MACJR";
+
+/* Programs built into the firmware while they are developed: listed
+ * first in the boot menu, no SD card round trip. */
+static const boot_builtin_t s_builtins[] = {
+  {"REMOTE", remotecontrol_main},
+};
 
 #define KEY_BEEP_HZ 2000
 #define KEY_BEEP_MS 50
@@ -80,6 +90,13 @@ void app_main(void) {
     xTaskCreate(kbrd_task, "kbrd", 3072, NULL, 4, NULL);
   }
 
+  if (ir_rx_init() != ESP_OK) {
+    ESP_LOGW(TAG, "ir_rx_init failed, continuing without IR receiver");
+  }
+  if (ir_tx_init() != ESP_OK) {
+    ESP_LOGW(TAG, "ir_tx_init failed, continuing without IR transmitter");
+  }
+
   macjr_hal_display_t *display = display_hal_init();
   if (!display) {
     ESP_LOGE(TAG, "display_hal_init failed");
@@ -99,7 +116,12 @@ void app_main(void) {
 
   for (;;) {
     char path[64];
-    boot_select(tty, path, sizeof(path));
-    exec_launch(tty, path);
+    const boot_builtin_t *builtin;
+    boot_select(tty, s_builtins, sizeof(s_builtins) / sizeof(s_builtins[0]), path, sizeof(path), &builtin);
+    if (builtin) {
+      exec_launch_main(tty, builtin->name, builtin->main);
+    } else {
+      exec_launch(tty, path);
+    }
   }
 }
