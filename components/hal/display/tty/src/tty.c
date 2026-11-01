@@ -265,3 +265,7 @@ struct macjr_termios *macjr_tty_termios(macjr_tty_t *tty) {
 struct macjr_winsize *macjr_tty_winsize(macjr_tty_t *tty) {
   return tty ? &tty->ws : NULL;
 }
+
+macjr_hal_display_t *macjr_tty_display(macjr_tty_t *tty) {
+  return tty ? tty->hal : NULL;
+}

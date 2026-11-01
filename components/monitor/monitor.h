@@ -21,6 +21,10 @@ extern "C" {
  * and once `tty` exists. */
 esp_err_t monitor_start(macjr_tty_t *tty);
 
+/* Switch MONITOR_KEY handling off (for an app that needs that key itself,
+ * like the MK-52 calculator) or back on. On by default. */
+void monitor_set_enabled(bool on);
+
 /* True while the monitor is on screen. Apps that keep updating the tty
  * must skip drawing then, or they would paint over the monitor. */
 bool monitor_is_open(void);

@@ -1,21 +1,3 @@
-## v1.2.0 - 2026-10-15
-
-* relinker: add optional `if_compiled` rules backed by CMake's compilation database, preserving compatibility with existing four-column CSV configurations.
-* relinker: support the ESP-IDF 5.3 Bluetooth/NimBLE memory layout change on ESP32-C3. Keep the old `bt_osi_mem_*` IRAM-strip rules when compiled, and use `nimble_mem_*` rules for newer builds.
-* relinker: add automated tests for both compilation layouts and low-speed mode.
-
-## v1.1.1 - 2025-02-25
-
-* relinker: some typo
-* relinker: add CI for relinker func
-* relinker: relinker.py:76: SyntaxWarning: invalid escape sequence '('
-* relinker: incorrect IDF_VERSION for IDF 5.0
-
-## v1.1.0 - 2025-01-16
-
-* relinker: support ESP32-C3 and SRAM optimization for flash-suspend
-* relinker: add IDF v5.3.x support
-
 ## v0.5.3 - 2023-09-15
 
 * fix `add_dependencies called with incorrect number of arguments` in `relinker.cmake`
@@ -23,7 +5,7 @@
 
 ## v0.5.2 - 2023-09-15
 
-* Support work on older ESP-IDF, eg: 4.3.x 
+* Support work on older ESP-IDF, eg: 4.3.x
 
 ## v0.5.1 - 2023-08-22
 
@@ -32,10 +14,6 @@
 ## v0.5.0 - 2023-08-02
 
 * Add GCC LTO support
-
-## v0.4.9 - 2023-7-26
-
-* gen_compressed_ota: Update the document to use the default V3 version compression format.
 
 ## v0.4.8 - 2023-05-24
 

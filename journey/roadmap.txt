@@ -16,6 +16,9 @@ Extensions and improvements:
 - IR port
 
 Apps:
-- audio player
-- mc (or volkov commander analog - there are decompiled sources somewhere)
-- sdr player + waterfall
+- audio player, volume control
+- MC (or dos navigator - https://github.com/maximmasiutin/Dos-Navigator)
+- wifi connect. fetch date/time; wifi shared folder; network stack?
+- gpaphic plotters, matrix op visualizer? 
+- micropython
+- screenshot maker by key combination

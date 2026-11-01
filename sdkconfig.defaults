@@ -51,3 +51,12 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
 # Run the CPU at its maximum clock.
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# ELF loader (components/exec): programs from the SD card are loaded into
+# PSRAM and run through its instruction bus alias. The sys_* API is
+# registered at run time, so only the built-in libc table is needed.
+CONFIG_ELF_LOADER=y
+CONFIG_ELF_LOADER_LOAD_PSRAM=y
+CONFIG_ELF_LOADER_LIBC_SYMBOLS=y
+# CONFIG_ELF_LOADER_ESPIDF_SYMBOLS is not set
+# CONFIG_ELF_LOADER_CUSTOMER_SYMBOLS is not set

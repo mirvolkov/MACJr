@@ -1,128 +1,157 @@
 /*
- * Boot menu: a single static screen drawn with the display HAL primitives
- * and the tty's built-in 8x16 bold font. The title uses the same font
- * scaled 3/2 (nearest neighbor) to 12x24, since there is no 24 px font yet.
+ * Boot menu: the programs found in /BIN on the SD card, written to the
+ * tty.
  *
- * Text lines are kept within 40 columns of 8 px (320 px panel).
+ *   ═════════════ MacJr 0.0.2 ══════════════
+ *
+ *   1 - HELLO
+ *   2 - MK52
+ *   ...
+ *
+ *   Select: press 1-6
+ *
+ * Programs are listed by file name without ".ELF", sorted, with '_' shown
+ * as a space (IDE_DEMO.ELF is "IDE DEMO").
  */
 #include "boot.h"
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 
 #include "esp_app_desc.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "exec.h"
 #include "keyboard.h"
-
-extern const uint8_t macjr_font_builtin_8x16[256][16];
 
 static const char *TAG = "boot";
 
-#define FONT_W 8
-#define FONT_H 16
-#define TITLE_W 12 /* 8x16 scaled by 3/2 */
-#define TITLE_H 24
+#define FIRST_ROW 3
+#define NOTE_ROW 13
+#define HINT_ROW 15
+#define NAME_LEN 13 /* 8.3 name + NUL */
 
-#define BAND_H 16 /* display HAL buffers at most 40 rows per draw call */
+static char s_names[BOOT_MAX_ENTRIES][NAME_LEN];
+static int s_count; /* programs in s_names */
 
-#define COLOR_BG     0x000000
-#define COLOR_TITLE  0x55FF55
-#define COLOR_TEXT   0xFFFFFF
-#define COLOR_HINT   0x808080
-#define COLOR_RULE   0x0000AA
-
-static void fill(macjr_hal_display_t *d, int x, int y, int w, int h, uint32_t rgb) {
-  for (int yy = y; yy < y + h; yy += BAND_H) {
-    int bh = (y + h - yy) < BAND_H ? (y + h - yy) : BAND_H;
-    d->fill_rect(d, x, yy, w, bh, rgb);
-  }
+static void out(macjr_tty_t *tty, const char *s) {
+  macjr_tty_write(tty, s, strlen(s));
 }
 
-static void draw_text(macjr_hal_display_t *d, int x, int y, const char *s, uint32_t fg) {
-  for (; *s; s++, x += FONT_W) {
-    d->blit_1bpp_mask(d, x, y, FONT_W, FONT_H, 1, macjr_font_builtin_8x16[(uint8_t)*s], fg, COLOR_BG);
-  }
+static int by_name(const void *a, const void *b) {
+  return strcasecmp(a, b);
 }
 
-/* 8x16 glyph scaled to 12x24: output pixel (x, y) samples source (2x/3, 2y/3). */
-static void draw_title(macjr_hal_display_t *d, int x, int y, const char *s, uint32_t fg) {
-  uint8_t big[TITLE_H][2];
-  for (; *s; s++, x += TITLE_W) {
-    const uint8_t *g = macjr_font_builtin_8x16[(uint8_t)*s];
-    memset(big, 0, sizeof(big));
-    for (int yy = 0; yy < TITLE_H; yy++) {
-      uint8_t src = g[yy * 2 / 3];
-      for (int xx = 0; xx < TITLE_W; xx++) {
-        if (src & (0x80 >> (xx * 2 / 3))) {
-          big[yy][xx >> 3] |= 0x80 >> (xx & 7);
-        }
-      }
-    }
-    d->blit_1bpp_mask(d, x, y, TITLE_W, TITLE_H, 2, &big[0][0], fg, COLOR_BG);
+/* Fill s_names with the *.ELF files of EXEC_BIN_DIR (without ".ELF").
+ * False if the directory can't be read. */
+static bool scan_programs(void) {
+  s_count = 0;
+  DIR *dir = opendir(EXEC_BIN_DIR);
+  if (!dir) {
+    return false;
   }
-}
-
-static void draw_menu(macjr_hal_display_t *d) {
-  char title[40];
-  snprintf(title, sizeof(title), "MacJr %s", esp_app_get_description()->version);
-  int title_x = (d->width_px - (int)strlen(title) * TITLE_W) / 2;
-
-  if (d->begin_frame) d->begin_frame(d);
-  fill(d, 0, 0, d->width_px, d->height_px, COLOR_BG);
-  draw_title(d, title_x < 0 ? 0 : title_x, 8, title, COLOR_TITLE);
-  fill(d, 8, 40, d->width_px - 16, 2, COLOR_RULE);
-  draw_text(d, 16, 56, "1 - Load TTY demo", COLOR_TEXT);
-  draw_text(d, 16, 80, "2 - Init SDR with UAC output", COLOR_TEXT);
-  draw_text(d, 16, 104, "3 - MK-52 calculator", COLOR_TEXT);
-  draw_text(d, 16, 128, "4 - SD card as USB drive", COLOR_TEXT);
-  draw_text(d, 16, 152, "5 - Port layout", COLOR_TEXT);
-  draw_text(d, 16, d->height_px - 24, "Select mode: press 1-5", COLOR_HINT);
-  if (d->end_frame) d->end_frame(d);
-}
-
-static boot_mode_t wait_choice(void) {
-  int fd = open(KBD_DEV_PATH, O_RDONLY);
-  if (fd < 0) {
-    ESP_LOGE(TAG, "open %s failed, using default mode", KBD_DEV_PATH);
-    return BOOT_MODE_TTY_DEMO;
-  }
-  boot_mode_t mode = BOOT_MODE_TTY_DEMO;
-  for (;;) {
-    uint8_t key;
-    if (read(fd, &key, 1) != 1) {
+  struct dirent *de;
+  while ((de = readdir(dir)) != NULL && s_count < BOOT_MAX_ENTRIES) {
+    size_t len = strlen(de->d_name);
+    /* dot files: "._NAME.ELF" is macOS metadata, not a program */
+    if (de->d_type == DT_DIR || de->d_name[0] == '.' || len <= 4 || len - 4 >= NAME_LEN ||
+        strcasecmp(de->d_name + len - 4, ".ELF") != 0) {
       continue;
     }
-    if (key == BOOT_MENU_KEY_1) {
-      mode = BOOT_MODE_TTY_DEMO;
-      break;
+    memcpy(s_names[s_count], de->d_name, len - 4);
+    s_names[s_count][len - 4] = '\0';
+    for (char *c = s_names[s_count]; *c; c++) {
+      if (*c == '_') {
+        *c = ' '; /* IDE_DEMO.ELF shows as "IDE DEMO" */
+      }
     }
-    if (key == BOOT_MENU_KEY_2) {
-      mode = BOOT_MODE_SDR_UAC;
-      break;
+    s_count++;
+  }
+  closedir(dir);
+  qsort(s_names, s_count, NAME_LEN, by_name);
+  return true;
+}
+
+static void draw_menu(macjr_tty_t *tty, bool have_bin) {
+  char line[96];
+  out(tty, "\x1b[?25l\x1b[0m\x1b[2J");
+  snprintf(line, sizeof(line), "MacJr %s", esp_app_get_description()->version);
+  macjr_tty_header(tty, line);
+
+  out(tty, "\x1b[97m");
+  for (int i = 0; i < s_count; i++) {
+    snprintf(line, sizeof(line), "\x1b[%d;1H %d - %s", FIRST_ROW + i, i + 1, s_names[i]);
+    out(tty, line);
+  }
+  if (s_count == 0) {
+    snprintf(line, sizeof(line), "\x1b[%d;1H\x1b[91m %s %s", NOTE_ROW,
+             have_bin ? "No programs in" : "Cannot read", EXEC_BIN_DIR + strlen(SDCARD_MOUNT_POINT));
+    out(tty, line);
+    snprintf(line, sizeof(line), "\x1b[%d;1H\x1b[90m Press any key to look again\x1b[0m", HINT_ROW);
+  } else {
+    snprintf(line, sizeof(line), "\x1b[%d;1H\x1b[90m Select: press 1-%d\x1b[0m", HINT_ROW, s_count);
+  }
+  out(tty, line);
+  macjr_display_flush(tty);
+}
+
+/* Menu entry (0-based) of a digit key, or -1. */
+static int entry_of(uint8_t key) {
+  static const uint8_t digits[BOOT_MAX_ENTRIES] = {KEY_MK_1, KEY_MK_2, KEY_MK_3, KEY_MK_4, KEY_MK_5,
+                                                   KEY_MK_6, KEY_MK_7, KEY_MK_8, KEY_MK_9};
+  for (int i = 0; i < BOOT_MAX_ENTRIES; i++) {
+    if (digits[i] == key) {
+      return i;
     }
-    if (key == BOOT_MENU_KEY_3) {
-      mode = BOOT_MODE_MK52;
-      break;
+  }
+  return -1;
+}
+
+/* Wait for a digit key that picks a listed program (0-based), or -1 for
+ * any key when there are none. */
+static int wait_choice(int fd) {
+  for (;;) {
+    uint8_t key;
+    if (fd < 0 || read(fd, &key, 1) != 1) {
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
     }
-    if (key == BOOT_MENU_KEY_4) {
-      mode = BOOT_MODE_USB_DRIVE;
-      break;
+    if (s_count == 0) {
+      return -1;
     }
-    if (key == BOOT_MENU_KEY_5) {
-      mode = BOOT_MODE_PORT;
-      break;
+    int entry = entry_of(key);
+    if (entry >= 0 && entry < s_count) {
+      return entry;
     }
     ESP_LOGI(TAG, "key %u is not a menu key", key);
   }
-  close(fd);
-  return mode;
 }
 
-boot_mode_t boot_select_mode(macjr_hal_display_t *display) {
-  draw_menu(display);
-  boot_mode_t mode = wait_choice();
-  ESP_LOGI(TAG, "boot mode %d selected", mode);
-  return mode;
+void boot_select(macjr_tty_t *tty, char *path, size_t path_len) {
+  int fd = open(KBD_DEV_PATH, O_RDONLY);
+  if (fd < 0) {
+    ESP_LOGE(TAG, "open %s failed", KBD_DEV_PATH);
+  }
+  int entry;
+  do {
+    bool have_bin = scan_programs();
+    draw_menu(tty, have_bin);
+    entry = wait_choice(fd);
+  } while (entry < 0);
+  if (fd >= 0) {
+    close(fd);
+  }
+  snprintf(path, path_len, "%s/%s.ELF", EXEC_BIN_DIR, s_names[entry]);
+  for (char *c = path + strlen(EXEC_BIN_DIR); *c; c++) {
+    if (*c == ' ') {
+      *c = '_'; /* back to the file name */
+    }
+  }
+  ESP_LOGI(TAG, "%s selected", path);
 }

@@ -2,7 +2,7 @@
   "idf.customExtraVars": {},
   "idf.currentSetup": "/Users/mir/.espressif/v6.0.1/esp-idf",
   "idf.flashType": "UART",
-  "idf.port": "/dev/tty.usbmodem1101",
+  "idf.port": "/dev/tty.usbmodem101",
   "clangd.path": "/Users/mir/.espressif/tools/esp-clang/esp-20.1.1_20250829/esp-clang/bin/clangd",
   "clangd.arguments": [
     "--background-index",

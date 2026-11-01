@@ -46,5 +46,23 @@ return (uint16_t)((c << 8) | (c >> 8));
 
 Both fixes were in the display driver, so every future screen benefits.
 
+## Later: drawing while sending
+
+Much later, a program that redraws the whole text area every frame showed
+the screen being painted from top to bottom. The driver drew a 40-row
+strip into its buffer, sent it, and *waited* for the transfer before
+drawing the next strip. So the CPU and the SPI bus took turns, and a full
+frame took both times added up.
+
+Now there are two strip buffers. `lcd_blit_async()` only queues a strip
+and returns a ticket, and drawing goes on in the other buffer. A buffer is
+reused only after `lcd_wait(ticket)` says its last transfer is done.
+Strips finish in the order they were queued, so a counter in the
+"transfer done" interrupt is all the bookkeeping needed. A frame now
+takes about as long as the longer of the two jobs, not the sum.
+
+Some sweep is left, because the panel shows pixels as they arrive. Only
+syncing to the panel's own refresh (its TE pin) would hide it completely.
+
 **Result:** a menu on every start, with a green title and white options,
 and keys that now use the MK-52 names (`KEY_MK_1`, `KEY_MK_2`).

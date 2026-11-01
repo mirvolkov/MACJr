@@ -23,11 +23,16 @@ esp_err_t lcd_init(void);
 uint16_t rgb_to_565(uint8_t r, uint8_t g, uint8_t b);
 
 /*
- * Draw an RGB565 buffer into [x1,x2) x [y1,y2) and BLOCK until the DMA
- * transfer has completed, so the caller may free/reuse `buf` immediately.
- * Coordinates are exclusive on the high end, like esp_lcd_panel_draw_bitmap.
+ * Start drawing an RGB565 buffer into [x1,x2) x [y1,y2) and return without
+ * waiting for the DMA transfer. `buf` must stay untouched until
+ * lcd_wait(ticket) returns. Coordinates are exclusive on the high end, like
+ * esp_lcd_panel_draw_bitmap.
  */
-void lcd_blit_sync(int x1, int y1, int x2, int y2, const void *buf);
+uint32_t lcd_blit_async(int x1, int y1, int x2, int y2, const void *buf);
+
+/* Block until the transfer lcd_blit_async() returned `ticket` for (and every
+ * transfer before it) has finished. */
+void lcd_wait(uint32_t ticket);
 
 #ifdef __cplusplus
 }

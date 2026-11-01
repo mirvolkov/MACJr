@@ -13,8 +13,8 @@
 
 /*
  * Low-level ST7789 SPI panel driver: brings up SPI3 + the panel, and exposes
- * a synchronous blit (lcd_blit_sync) that blocks until DMA finishes so
- * display_hal.c can safely reuse its row buffer right after the call returns.
+ * an asynchronous blit (lcd_blit_async) plus lcd_wait(), so display_hal.c can
+ * fill one row buffer while DMA is still sending the other.
  */
 
 // Pin definitions (ESP32-S3, ST7789)
@@ -38,14 +38,19 @@ static const char *TAG = "ST7789";
 esp_lcd_panel_io_handle_t io_handle = NULL;
 esp_lcd_panel_handle_t panel_handle = NULL;
 
-// Signaled from the SPI "color transfer done" ISR; lets lcd_blit_sync() block
-// until the panel has finished reading the caller's buffer.
+// Signaled from the SPI "color transfer done" ISR; lets lcd_wait() block
+// until the panel has finished reading a caller's buffer. Transfers complete
+// in the order they were queued, so counting them is enough to tell which
+// buffers are free again.
 static SemaphoreHandle_t s_trans_done = NULL;
+static uint32_t s_queued;             // transfers handed to the panel so far
+static volatile uint32_t s_completed; // transfers the ISR has seen finish
 
 static bool on_color_trans_done(esp_lcd_panel_io_handle_t io,
                                 esp_lcd_panel_io_event_data_t *edata, void *user_ctx)
 {
     BaseType_t woken = pdFALSE;
+    s_completed++;
     if (s_trans_done) {
         xSemaphoreGiveFromISR(s_trans_done, &woken);
     }
@@ -60,13 +65,21 @@ uint16_t rgb_to_565(uint8_t r, uint8_t g, uint8_t b)
     return (uint16_t)((c << 8) | (c >> 8));
 }
 
-void lcd_blit_sync(int x1, int y1, int x2, int y2, const void *buf)
+uint32_t lcd_blit_async(int x1, int y1, int x2, int y2, const void *buf)
 {
-    // Drop any stale completion left over from a prior transfer, then draw and
-    // wait for THIS transfer's completion before returning.
-    xSemaphoreTake(s_trans_done, 0);
+    // Returns once the transfer is queued; the panel driver itself first
+    // waits for the previous one to finish before sending the next window.
     esp_lcd_panel_draw_bitmap(panel_handle, x1, y1, x2, y2, buf);
-    xSemaphoreTake(s_trans_done, portMAX_DELAY);
+    return ++s_queued;
+}
+
+void lcd_wait(uint32_t ticket)
+{
+    // The binary semaphore may fold several completions into one give, so
+    // re-check the counter after every wake-up rather than counting gives.
+    while ((int32_t)(s_completed - ticket) < 0) {
+        xSemaphoreTake(s_trans_done, portMAX_DELAY);
+    }
 }
 
 esp_err_t lcd_init(void)

@@ -1,13 +1,11 @@
 /*
  * Firmware entry point: brings up the board HALs (SD card, keyboard, ST7789
- * display), asks the boot menu which mode to start (see components/boot),
- * then runs it:
- *  - TTY demo: macjr_tty stack + static Turbo C IDE screen (ide_screen.c)
- *  - SDR + UAC: SoftRock SDR -- Si5351 I/Q LO tuned from the keyboard, ADC
- *    I/Q streamed to the host as a USB UAC microphone (never returns)
- *  - MK-52: Elektronika MK-52 calculator on the MK-52 keyboard (never returns)
- *  - USB drive: the SD card exposed to the host as a USB drive (never returns)
- *  - Port: the port layout picture IMG/layout.png from the SD card
+ * display), starts the system monitor (key Cx), then loops over the boot
+ * menu (components/boot) and the program picked there: one from /BIN on
+ * the SD card, loaded and run by components/exec (apps/: IDE demo, MK-52
+ * calculator, SoftRock SDR radio, USB drive, port layout picture, hello).
+ * В↑ goes back to the menu when a program ends; programs that never return
+ * (radio, USB drive, MK-52) stay until the next reboot.
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -15,24 +13,19 @@
 #include <unistd.h>
 
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "tty/tty.h"
 #include "boot.h"
 #include "display_hal.h"
-#include "ide_screen.h"
 #include "sdcard.h"
 #include "matmul_bench.h"
 #include "keyboard.h"
 #include "speaker.h"
 #include "db.h"
 #include "monitor.h"
-#include "mk52.h"
-#include "usbdrive.h"
-#include "port.h"
-#include "radio.h"
+#include "exec.h"
 
 static const char *TAG = "MACJR";
 
@@ -64,20 +57,6 @@ static void kbrd_task(void *arg) {
   }
 }
 
-static void run_tty_demo(macjr_tty_t *tty) {
-  /* Static, one-shot recreation of a classic Turbo C IDE screen. No
-   * keyboard input, no redraw loop -- hide the cursor, draw it once, flush
-   * once, and leave it on screen. */
-  const char *clear = "\x1b[2J\x1b[?25l";
-  macjr_tty_write(tty, clear, strlen(clear));
-  macjr_draw_turboc_ide(tty);
-
-  int64_t flush_start_us = esp_timer_get_time();
-  macjr_display_flush(tty);
-  int64_t flush_us = esp_timer_get_time() - flush_start_us;
-  ESP_LOGI(TAG, "display flush took %lld.%03lld ms", flush_us / 1000, flush_us % 1000);
-}
-
 static void start_monitor(macjr_tty_t *tty) {
   if (monitor_start(tty) != ESP_OK) {
     ESP_LOGW(TAG, "monitor_start failed");
@@ -107,8 +86,6 @@ void app_main(void) {
     return;
   }
 
-  boot_mode_t mode = boot_select_mode(display);
-
   macjr_tty_t *tty = macjr_tty_create(display, 8, 16); /* matches the built-in 8x16 font */
   if (!tty) {
     ESP_LOGE(TAG, "macjr_tty_create failed");
@@ -118,31 +95,11 @@ void app_main(void) {
   struct macjr_winsize *ws = macjr_tty_winsize(tty);
   ESP_LOGI(TAG, "tty up: %ux%u chars on %ux%u px", ws->ws_col, ws->ws_row, ws->ws_xpixel, ws->ws_ypixel);
 
-  /* The monitor (key Cx) runs in every mode except the calculator, which
-   * needs Cx itself. Apps that don't return start it first. */
-  switch (mode) {
-  case BOOT_MODE_SDR_UAC:
-    start_monitor(tty);
-    radio_run(tty); /* never returns */
-    break;
-  case BOOT_MODE_MK52:
-    mk52_run(tty, display); /* never returns */
-    break;
-  case BOOT_MODE_USB_DRIVE:
-    start_monitor(tty);
-    usbdrive_run(tty); /* never returns */
-    break;
-  case BOOT_MODE_PORT:
-    port_show(tty, display);
-    monitor_set_redraw_cb(port_redraw, NULL); /* the picture is not in the tty */
-    break;
-  case BOOT_MODE_TTY_DEMO:
-  default:
-    run_tty_demo(tty);
-    break;
-  }
-
-  /* Started after the mode has drawn its screen, so the monitor saves and
-   * later restores that screen. */
   start_monitor(tty);
+
+  for (;;) {
+    char path[64];
+    boot_select(tty, path, sizeof(path));
+    exec_launch(tty, path);
+  }
 }

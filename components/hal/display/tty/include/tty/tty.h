@@ -52,6 +52,21 @@ void macjr_tty_restore_screen(macjr_tty_t *tty, macjr_tty_screen_t *screen);
 macjr_vc_t *macjr_tty_vc(macjr_tty_t *tty);
 struct macjr_termios *macjr_tty_termios(macjr_tty_t *tty);
 struct macjr_winsize *macjr_tty_winsize(macjr_tty_t *tty);
+/* The display the tty draws on. Only for apps agreed to draw graphics
+ * (the PNG viewer); console apps stay with the tty. */
+macjr_hal_display_t *macjr_tty_display(macjr_tty_t *tty);
+
+/* App header bar character: CP866 double horizontal line. */
+#define MACJR_TTY_HEADER_CHAR '\xCD'
+
+/* Draw the app header on the top row, the title centered between bars
+ * across the whole width:
+ *
+ *   ═════════════ SoftRock SDR ═════════════
+ *
+ * `title` is plain CP866 text without escapes. Leaves the cursor at the
+ * start of row 2 and the colors reset; doesn't flush. */
+void macjr_tty_header(macjr_tty_t *tty, const char *title);
 
 #ifdef __cplusplus
 }

@@ -41,12 +41,12 @@
 /* CP866 glyphs from the built-in font. */
 #define CH_FULL "\xDB"
 #define CH_SHADE "\xB0"
-#define CH_HLINE "\xC4"
 
 static const char *TAG = "monitor";
 
 static macjr_tty_t *s_tty;
 static volatile bool s_open;
+static volatile bool s_enabled = true; /* MONITOR_KEY handled */
 static monitor_redraw_cb_t s_redraw_cb;
 static void *s_redraw_ctx;
 static temperature_sensor_handle_t s_tsens;
@@ -110,12 +110,7 @@ static void mem_line(int r, const char *name, uint32_t caps) {
 
 static void draw_static(void) {
   out("\x1b[?25l\x1b[0m\x1b[2J");
-  char rule[40 * sizeof(CH_HLINE) + 1] = "";
-  for (int i = 0; i < 40; i++) {
-    strcat(rule, CH_HLINE);
-  }
-  line(1, "\x1b[92m MacJr system monitor");
-  line(2, "\x1b[94m%s", rule);
+  macjr_tty_header(s_tty, "MacJr system monitor");
   line(15, "\x1b[90m Press key %d to close", MONITOR_KEY);
 }
 
@@ -194,6 +189,10 @@ static void run_monitor(int fd) {
   }
 }
 
+void monitor_set_enabled(bool on) {
+  s_enabled = on;
+}
+
 bool monitor_is_open(void) {
   return s_open;
 }
@@ -213,7 +212,7 @@ static void monitor_task(void *arg) {
   }
   for (;;) {
     uint8_t key;
-    if (read(fd, &key, 1) == 1 && key == MONITOR_KEY) { /* blocks */
+    if (read(fd, &key, 1) == 1 && key == MONITOR_KEY && s_enabled) { /* blocks */
       run_monitor(fd);
     }
   }

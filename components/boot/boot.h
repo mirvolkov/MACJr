@@ -1,33 +1,22 @@
 #ifndef MACJR_BOOT_H
 #define MACJR_BOOT_H
 
-#include "keyboard.h"
-#include "tty/hal_display.h"
+#include <stddef.h>
+
+#include "tty/tty.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* MK-52 digit keys that pick menu entries. */
-#define BOOT_MENU_KEY_1 KEY_MK_1
-#define BOOT_MENU_KEY_2 KEY_MK_2
-#define BOOT_MENU_KEY_3 KEY_MK_3
-#define BOOT_MENU_KEY_4 KEY_MK_4
-#define BOOT_MENU_KEY_5 KEY_MK_5
+/* Programs the menu shows, picked with the MK-52 digit keys 1-9. */
+#define BOOT_MAX_ENTRIES 9
 
-typedef enum {
-  BOOT_MODE_TTY_DEMO = 1, /* default: TTY + Turbo C IDE demo screen */
-  BOOT_MODE_SDR_UAC = 2,  /* Si5351 LO for the Tayloe detector, I/Q out over USB UAC */
-  BOOT_MODE_MK52 = 3,     /* Elektronika MK-52 calculator */
-  BOOT_MODE_USB_DRIVE = 4, /* SD card exposed to the host as a USB drive */
-  BOOT_MODE_PORT = 5,     /* port layout picture from the SD card */
-} boot_mode_t;
-
-/* Decide the startup mode: shows "MacJr <version>" and the mode list on
- * `display`, then blocks until a menu key is pressed. Returns
- * BOOT_MODE_TTY_DEMO if the keyboard is unavailable. Call after
- * keyboard_init(). */
-boot_mode_t boot_select_mode(macjr_hal_display_t *display);
+/* Show "MacJr <version>" and the *.ELF files of EXEC_BIN_DIR by name on
+ * `tty`, and block until a digit key picks one; its full path goes to
+ * `path`. With no programs (no card, empty /BIN) it says so and looks
+ * again on every key. Call after keyboard_init(). */
+void boot_select(macjr_tty_t *tty, char *path, size_t path_len);
 
 #ifdef __cplusplus
 }

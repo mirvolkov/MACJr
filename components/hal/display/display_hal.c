@@ -1,7 +1,8 @@
 /*
  * macjr_hal_display_t implementation backed by lcd.c's ST7789 SPI driver.
  * Buffers cell/glyph draws into a persistent row window so a full-screen
- * refresh costs a handful of SPI transfers instead of one per cell.
+ * refresh costs a handful of SPI transfers instead of one per cell, and
+ * keeps two such windows so the next one is drawn while DMA sends the last.
  */
 #include "display_hal.h"
 #include "lcd.h"
@@ -25,10 +26,17 @@ static inline uint16_t to565(uint32_t rgb888)
  * per call made a full refresh take well over a second. Instead, accumulate
  * rows of pixels into a single persistent DMA buffer and only hit the SPI
  * bus when a call no longer fits the buffered window (or at end_frame).
+ *
+ * The window is double-buffered: flush_row() only queues the transfer and
+ * switches to the other buffer, so drawing the next window overlaps with
+ * sending this one. A buffer is reused only after its last transfer is done.
  */
 #define ROW_BUF_CAP 40 /* px tall, matches lcd.c's BUFFER_LINES sizing */
 
-static uint16_t *s_row_buf;
+static uint16_t *s_bufs[2];      /* both the same buffer if the second didn't fit */
+static uint32_t s_buf_ticket[2]; /* lcd_wait() ticket of each buffer's last transfer */
+static int s_cur;                /* buffer being drawn into */
+static uint16_t *s_row_buf;      /* s_bufs[s_cur] */
 static int s_row_y0 = -1; /* top y of the buffered window, -1 = empty */
 static int s_row_h = 0;   /* valid rows currently held in s_row_buf */
 
@@ -50,6 +58,8 @@ static void flush_row(macjr_hal_display_t *d)
         return;
     }
     int run = -1; /* first row of the pending full-width run */
+    uint32_t ticket = 0;
+    bool sent = false;
     for (int r = 0; r <= s_row_h; r++) {
         bool full = r < s_row_h && s_dirty_x0[r] == 0 && s_dirty_x1[r] == d->width_px;
         if (full) {
@@ -59,14 +69,24 @@ static void flush_row(macjr_hal_display_t *d)
             continue;
         }
         if (run >= 0) {
-            lcd_blit_sync(0, s_row_y0 + run, d->width_px, s_row_y0 + r,
-                          &s_row_buf[(size_t)run * (size_t)d->width_px]);
+            ticket = lcd_blit_async(0, s_row_y0 + run, d->width_px, s_row_y0 + r,
+                                    &s_row_buf[(size_t)run * (size_t)d->width_px]);
+            sent = true;
             run = -1;
         }
         if (r < s_row_h && s_dirty_x0[r] < s_dirty_x1[r]) {
-            lcd_blit_sync(s_dirty_x0[r], s_row_y0 + r, s_dirty_x1[r], s_row_y0 + r + 1,
-                          &s_row_buf[(size_t)r * (size_t)d->width_px + s_dirty_x0[r]]);
+            ticket = lcd_blit_async(s_dirty_x0[r], s_row_y0 + r, s_dirty_x1[r], s_row_y0 + r + 1,
+                                    &s_row_buf[(size_t)r * (size_t)d->width_px + s_dirty_x0[r]]);
+            sent = true;
         }
+    }
+    if (sent) {
+        /* Leave this buffer to DMA and draw on in the other one, once the
+         * transfer that last read it is done. */
+        s_buf_ticket[s_cur] = ticket;
+        s_cur ^= 1;
+        s_row_buf = s_bufs[s_cur];
+        lcd_wait(s_bufs[0] == s_bufs[1] ? ticket : s_buf_ticket[s_cur]);
     }
     s_row_y0 = -1;
     s_row_h = 0;
@@ -236,11 +256,18 @@ macjr_hal_display_t *display_hal_init(void)
         return NULL;
     }
 
-    s_row_buf = heap_caps_malloc((size_t)LCD_H_RES * ROW_BUF_CAP * sizeof(uint16_t), MALLOC_CAP_DMA);
-    if (!s_row_buf) {
+    size_t buf_size = (size_t)LCD_H_RES * ROW_BUF_CAP * sizeof(uint16_t);
+    s_bufs[0] = heap_caps_malloc(buf_size, MALLOC_CAP_DMA);
+    if (!s_bufs[0]) {
         ESP_LOGE(TAG, "failed to allocate row buffer");
         return NULL;
     }
+    s_bufs[1] = heap_caps_malloc(buf_size, MALLOC_CAP_DMA);
+    if (!s_bufs[1]) {
+        ESP_LOGW(TAG, "no room for a second row buffer, drawing and sending in turn");
+        s_bufs[1] = s_bufs[0];
+    }
+    s_row_buf = s_bufs[0];
 
     static macjr_hal_display_t hal;
     hal.ctx = NULL;

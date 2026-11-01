@@ -10,7 +10,7 @@ support came together: what we tried, what broke, and how we fixed it.
 | 1 | [The keyboard matrix](01-keyboard-matrix.md) | An MCP23018 scanner, two dead rows, and a `/dev/kbrd` device |
 | 2 | [A microphone over USB](02-mic-and-uac.md) | ADC with DMA streamed to a PC as a USB audio device |
 | 3 | [A tiny radio](03-sdr-si5351.md) | Si5351 driver from the datasheet: 7.055 MHz in quadrature |
-| 4 | [The boot menu](04-boot-menu.md) | A start screen that exposed two display bugs |
+| 4 | [The boot menu](04-boot-menu.md) | A start screen that exposed two display bugs; later, double buffering |
 | 5 | [Faster boot](05-faster-boot.md) | Config tuning, and a PSRAM test we rolled back |
 | 6 | [The system monitor](06-system-monitor.md) | A live overlay: CPU, RAM, temperature, SD card |
 | 7 | [Mapping the MK-52 keys](07-mk52-key-mapping.md) | 32 presses that turned key codes into calculator keys |
@@ -19,6 +19,7 @@ support came together: what we tried, what broke, and how we fixed it.
 | 10 | [The SD card as a USB drive](10-usb-sd-drive.md) | One TinyUSB stack, two devices: microphone or card reader |
 | 11 | [A picture from the SD card](11-png-port-layout.md) | Our own streaming PNG decoder on the ROM's inflater |
 | 12 | [A config file of our own](12-config-db.md) | A key=value store on the SD card, with a crash-safe rewrite |
+| 13 | [Programs from the SD card](13-programs-from-sd.md) | ELF apps loaded into PSRAM and run on the second core |
 
 For the compact list of every step so far, open issues and what comes
 next, see [roadmap.txt](roadmap.txt).
