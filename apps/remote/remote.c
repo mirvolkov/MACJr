@@ -1,6 +1,6 @@
 /*
- * Remote control: shows the last IR command received and sends it again
- * on А↑.
+ * REMOTE.ELF -- remote control: shows the last IR command received and
+ * sends it again on А↑.
  *
  *   ════════════ Remote control ════════════
  *
@@ -17,13 +17,7 @@
  * A protocol the decoder doesn't know is replayed from its raw burst.
  * The receiver also hears what the LED sends, so a sent command shows up
  * as received again.
- *
- * Built into the firmware for now (no SD card round trip while it is
- * developed); it uses only what a program from /BIN can (the IR calls
- * are exported), so it can move to apps/ as it is.
  */
-#include "remotecontrol.h"
-
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -34,6 +28,7 @@
 #include "ir_rx.h"
 #include "ir_tx.h"
 #include "keyboard.h"
+#include "macjr.h"
 #include "monitor.h"
 
 #define KEY_SEND  KEY_MK_A_UP /* А↑ */
@@ -135,7 +130,7 @@ static void on_monitor_closed(void *ctx) {
   s_redraw = true;
 }
 
-int remotecontrol_main(int argc, char *argv[], macjr_tty_t *tty) {
+int main(int argc, char *argv[], macjr_tty_t *tty) {
   s_tty = tty;
   s_sent[0] = '\0';
   ir_event_t ev;

@@ -4,12 +4,11 @@
  *
  *   ═════════════ MacJr 0.0.2 ══════════════
  *
- *   1 - REMOTE
- *   2 - HELLO
- *   3 - MK52
+ *   1 - HELLO
+ *   2 - MK52
  *   ...
  *
- *   Select: press 1-7
+ *   Select: press 1-8
  *
  * Programs built into the firmware come first (in cyan), then the files,
  * listed by file name without ".ELF", sorted, with '_' shown as a space
