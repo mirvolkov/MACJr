@@ -21,6 +21,7 @@ support came together: what we tried, what broke, and how we fixed it.
 | 12 | [A config file of our own](12-config-db.md) | A key=value store on the SD card, with a crash-safe rewrite |
 | 13 | [Programs from the SD card](13-programs-from-sd.md) | ELF apps loaded into PSRAM and run on the second core |
 | 14 | [An IR port](14-ir-remote.md) | A receiver ported from MicroPython, an RMT transmitter, and a remote control |
+| 15 | [Waiting without polling](15-flashdb-select-watch.md) | FlashDB for config, `select()` on the keyboard, database watches, matrix rain |
 
 For the compact list of every step so far, open issues and what comes
 next, see [roadmap.txt](roadmap.txt).

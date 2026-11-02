@@ -13,14 +13,18 @@
  *
  * Each debounced key press is published as a one-byte key code on the
  * character device /dev/kbrd. Every open() gets its own queue, so all
- * readers see every key.
+ * readers see every key. select() reports a descriptor readable while its
+ * queue has keys: each select() in progress is registered here, and
+ * key_publish() wakes the ones watching a queue that just got a key.
  */
 #include "keyboard.h"
 
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/stat.h>
 
 #include "driver/i2c_master.h"
@@ -58,6 +62,7 @@ static const char *TAG = "keyboard";
 
 #define KBD_MAX_READERS 4      /* simultaneous open() of /dev/kbrd */
 #define KBD_QUEUE_BYTES 32     /* per reader; keys are dropped when full */
+#define KBD_MAX_SELECTS 4      /* select() calls waiting at the same time */
 
 typedef struct {
     uint8_t kbd_pin; /* keyboard connector pin */
@@ -87,12 +92,20 @@ typedef struct {
     bool nonblock;
 } kbd_reader_t;
 
+/* A select() waiting on some of our descriptors. */
+typedef struct {
+    esp_vfs_select_sem_t sem;
+    fd_set *readfds; /* the caller's set: ready descriptors go here */
+    fd_set watched;  /* the descriptors it asked about */
+} kbd_select_t;
+
 static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_dev;
 static uint8_t s_keycode[KBD_ROWS][KBD_COLS]; /* 0 = no key at that spot */
 static kbd_reader_t s_readers[KBD_MAX_READERS];
 static volatile uint16_t s_stable[KBD_ROWS]; /* debounced state, bit c = key down */
 static volatile uint32_t s_scans;            /* completed scans since init */
+static kbd_select_t *s_selects[KBD_MAX_SELECTS]; /* under s_readers_lock */
 static SemaphoreHandle_t s_readers_lock;
 
 static esp_err_t mcp_write_pair(uint8_t reg, uint8_t a, uint8_t b)
@@ -169,12 +182,24 @@ static esp_err_t matrix_scan(uint16_t out[KBD_ROWS])
 }
 
 /* Hand a key code to every open reader; a full queue drops the key. */
+/* Wake the select() calls watching reader `fd`. Under s_readers_lock. */
+static void select_notify(int fd)
+{
+    for (int i = 0; i < KBD_MAX_SELECTS; i++) {
+        kbd_select_t *sel = s_selects[i];
+        if (sel && FD_ISSET(fd, &sel->watched)) {
+            FD_SET(fd, sel->readfds);
+            esp_vfs_select_triggered(sel->sem);
+        }
+    }
+}
+
 static void key_publish(uint8_t code)
 {
     xSemaphoreTake(s_readers_lock, portMAX_DELAY);
     for (int i = 0; i < KBD_MAX_READERS; i++) {
-        if (s_readers[i].buf) {
-            xStreamBufferSend(s_readers[i].buf, &code, 1, 0);
+        if (s_readers[i].buf && xStreamBufferSend(s_readers[i].buf, &code, 1, 0) == 1) {
+            select_notify(i);
         }
     }
     xSemaphoreGive(s_readers_lock);
@@ -325,12 +350,86 @@ static int kbrd_fstat(void *ctx, int fd, struct stat *st)
     return 0;
 }
 
+/* select() on /dev/kbrd: readable while the reader's queue has keys.
+ * Never writable, no exceptions. The VFS hands us its sets with our own
+ * descriptor numbers; they are cleared here and refilled as descriptors
+ * become ready. */
+static esp_err_t kbrd_start_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+                                   esp_vfs_select_sem_t sem, void **end_select_args)
+{
+    *end_select_args = NULL;
+    int max_fd = nfds < KBD_MAX_READERS ? nfds : KBD_MAX_READERS;
+    kbd_select_t *sel = calloc(1, sizeof(*sel));
+    if (!sel) {
+        return ESP_ERR_NO_MEM;
+    }
+    sel->sem = sem;
+    sel->readfds = readfds;
+    FD_ZERO(&sel->watched);
+
+    xSemaphoreTake(s_readers_lock, portMAX_DELAY);
+    for (int fd = 0; fd < max_fd; fd++) {
+        if (FD_ISSET(fd, readfds)) {
+            if (!reader_valid(fd)) {
+                xSemaphoreGive(s_readers_lock);
+                free(sel);
+                return ESP_ERR_INVALID_STATE; /* select() fails with EBADF */
+            }
+            FD_SET(fd, &sel->watched);
+        }
+    }
+    int slot = 0;
+    while (slot < KBD_MAX_SELECTS && s_selects[slot]) {
+        slot++;
+    }
+    if (slot == KBD_MAX_SELECTS) {
+        xSemaphoreGive(s_readers_lock);
+        free(sel);
+        return ESP_ERR_NO_MEM;
+    }
+    FD_ZERO(readfds);
+    FD_ZERO(writefds);
+    FD_ZERO(exceptfds);
+    s_selects[slot] = sel;
+    for (int fd = 0; fd < max_fd; fd++) {
+        if (FD_ISSET(fd, &sel->watched) && xStreamBufferBytesAvailable(s_readers[fd].buf) > 0) {
+            select_notify(fd); /* keys already waiting */
+        }
+    }
+    xSemaphoreGive(s_readers_lock);
+    *end_select_args = sel;
+    return ESP_OK;
+}
+
+static esp_err_t kbrd_end_select(void *end_select_args)
+{
+    kbd_select_t *sel = end_select_args;
+    if (!sel) {
+        return ESP_OK;
+    }
+    xSemaphoreTake(s_readers_lock, portMAX_DELAY);
+    for (int i = 0; i < KBD_MAX_SELECTS; i++) {
+        if (s_selects[i] == sel) {
+            s_selects[i] = NULL;
+        }
+    }
+    xSemaphoreGive(s_readers_lock);
+    free(sel);
+    return ESP_OK;
+}
+
+static const esp_vfs_select_ops_t s_kbrd_select_ops = {
+    .start_select = kbrd_start_select,
+    .end_select = kbrd_end_select,
+};
+
 static const esp_vfs_fs_ops_t s_kbrd_ops = {
     .open_p = kbrd_open,
     .read_p = kbrd_read,
     .close_p = kbrd_close,
     .fcntl_p = kbrd_fcntl,
     .fstat_p = kbrd_fstat,
+    .select = &s_kbrd_select_ops,
 };
 
 esp_err_t keyboard_init(void)

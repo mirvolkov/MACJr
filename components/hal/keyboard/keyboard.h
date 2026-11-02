@@ -13,7 +13,9 @@ extern "C" {
 /* Character device that delivers key presses, one byte per key. Open it
  * read-only; each open() gets its own queue, so every reader sees every
  * key. read() blocks until a key arrives unless O_NONBLOCK is set (then it
- * fails with EAGAIN). Key releases are not reported. */
+ * fails with EAGAIN). select() reports the descriptor readable while keys
+ * are waiting, so a program can wait for keys together with other
+ * descriptors, or with a timeout. Key releases are not reported. */
 #define KBD_DEV_PATH "/dev/kbrd"
 
 /* Raw key codes, not yet mapped to ASCII: the 32 keys are numbered

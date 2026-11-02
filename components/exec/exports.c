@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -60,6 +61,7 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(db_create),
   ESP_ELFSYM_EXPORT(db_read),
   ESP_ELFSYM_EXPORT(db_update),
+  ESP_ELFSYM_EXPORT(db_watch),
   ESP_ELFSYM_EXPORT(ir_rx_read),
   ESP_ELFSYM_EXPORT(ir_rx_last_burst),
   ESP_ELFSYM_EXPORT(ir_proto_name),
@@ -92,6 +94,7 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(opendir),
   ESP_ELFSYM_EXPORT(readdir),
   ESP_ELFSYM_EXPORT(closedir),
+  ESP_ELFSYM_EXPORT(select),
 
   /* C library missing from the loader's table */
   ESP_ELFSYM_EXPORT(snprintf),

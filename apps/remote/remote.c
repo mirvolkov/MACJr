@@ -22,6 +22,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/select.h>
 #include <unistd.h>
 
 #include "esp_err.h"
@@ -32,7 +33,7 @@
 #include "monitor.h"
 
 #define KEY_SEND  KEY_MK_A_UP /* А↑ */
-#define POLL_MS   20
+#define POLL_MS   20 /* select() timeout: how often IR is checked */
 #define ROW_FIRST 3
 #define ROW_SENT  10
 #define ROW_HINT  15
@@ -139,20 +140,28 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
   }
 
   int fd = open(KBD_DEV_PATH, O_RDONLY);
-  if (fd >= 0) {
-    fcntl(fd, F_SETFL, O_NONBLOCK);
-  }
   monitor_set_redraw_cb(on_monitor_closed, NULL);
   draw_all();
 
   for (;;) {
     bool dirty = false;
-    if (ir_rx_read(&ev, POLL_MS) == ESP_OK) { /* the loop's pace */
+    /* wait for a key, at most POLL_MS: IR is not a descriptor (yet) */
+    fd_set keys;
+    FD_ZERO(&keys);
+    bool key_ready = false;
+    if (fd >= 0) {
+      FD_SET(fd, &keys);
+      struct timeval timeout = {.tv_sec = 0, .tv_usec = POLL_MS * 1000};
+      key_ready = select(fd + 1, &keys, NULL, NULL, &timeout) > 0 && FD_ISSET(fd, &keys);
+    } else {
+      sys_delay(POLL_MS);
+    }
+    if (ir_rx_read(&ev, 0) == ESP_OK) {
       received(&ev);
       dirty = true;
     }
     uint8_t key;
-    if (fd >= 0 && read(fd, &key, 1) == 1 && !monitor_is_open()) {
+    if (key_ready && read(fd, &key, 1) == 1 && !monitor_is_open()) {
       if (key == KEY_MK_ENTER) {
         break;
       }

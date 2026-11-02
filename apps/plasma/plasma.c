@@ -1,12 +1,16 @@
 /*
- * PLASMA.ELF -- fills the screen with random glyphs in random colors,
- * frame after frame, until any key.
+ * PLASMA.ELF -- screen animation until any key, in one of two modes:
+ *
+ *   -m  matrix: green glyphs rain down the columns (the default, which
+ *       the boot menu runs: it passes no arguments)
+ *   -r  rainbow: random glyphs in random colors, frame after frame
  *
  *   ════════════════ PLASMA ════════════════
  *   rows 2-14: random glyphs
  *   row 15:    hint
  */
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -21,6 +25,12 @@
 #define W 40
 #define H (HINT_ROW - TOP_ROW) /* 13 rows: the last screen cell would scroll */
 #define FRAME_MS 50
+#define FLICKER 6 /* matrix: trail glyphs changed per frame */
+
+/* Matrix colors: the head of a drop, the cell behind it, the rest. */
+#define C_HEAD 97 /* bright white */
+#define C_NECK 92 /* bright green */
+#define C_TAIL 32 /* green */
 
 static uint32_t s_seed;
 
@@ -42,7 +52,7 @@ static char random_glyph(void) {
   return (char)(r < 94 ? '!' + r : 0xB0 + (r - 94));
 }
 
-static void draw_frame(macjr_tty_t *tty) {
+static void draw_rainbow(macjr_tty_t *tty) {
   char line[W * 6 + 16]; /* a color change and a glyph per cell at most */
   for (int y = 0; y < H; y++) {
     int n = snprintf(line, sizeof(line), "\x1b[%d;1H", TOP_ROW + y);
@@ -54,12 +64,105 @@ static void draw_frame(macjr_tty_t *tty) {
   }
 }
 
+/* ---- matrix ------------------------------------------------------------ */
+
+/* A drop falling down a column: its head at row `head` (negative while it
+ * waits above the screen), `len` cells of trail, one row per `speed`
+ * frames. */
+typedef struct {
+  int head;
+  int len;
+  int speed;
+  int tick;
+} drop_t;
+
+static drop_t s_drops[W];
+static char s_glyph[H][W]; /* what the screen shows, ' ' = empty */
+static char s_out[4096];
+static int s_n;
+
+/* Digits, Latin capitals and CP866 Cyrillic capitals. */
+static char matrix_glyph(void) {
+  uint32_t r = rnd() % (10 + 26 + 32);
+  return (char)(r < 10 ? '0' + r : r < 36 ? 'A' + (r - 10) : 0x80 + (r - 36));
+}
+
+static void new_drop(drop_t *d) {
+  d->len = 4 + (int)(rnd() % 9);
+  d->head = -(int)(rnd() % 16); /* a random pause before it shows */
+  d->speed = 1 + (int)(rnd() % 3);
+  d->tick = 0;
+}
+
+static void put(macjr_tty_t *tty, int x, int y, char ch, int color) {
+  if (y < 0 || y >= H) {
+    return;
+  }
+  if (s_n > (int)sizeof(s_out) - 24) {
+    macjr_tty_write(tty, s_out, s_n);
+    s_n = 0;
+  }
+  s_glyph[y][x] = ch;
+  s_n += snprintf(s_out + s_n, sizeof(s_out) - s_n, "\x1b[%d;%dH\x1b[%dm", TOP_ROW + y, x + 1, color);
+  s_out[s_n++] = ch;
+}
+
+static void matrix_init(void) {
+  memset(s_glyph, ' ', sizeof(s_glyph));
+  for (int x = 0; x < W; x++) {
+    new_drop(&s_drops[x]);
+  }
+}
+
+static void draw_matrix(macjr_tty_t *tty) {
+  s_n = 0;
+  for (int x = 0; x < W; x++) {
+    drop_t *d = &s_drops[x];
+    if (++d->tick < d->speed) {
+      continue;
+    }
+    d->tick = 0;
+    d->head++;
+    put(tty, x, d->head, matrix_glyph(), C_HEAD);
+    put(tty, x, d->head - 1, matrix_glyph(), C_NECK);
+    if (d->head - 2 >= 0 && d->head - 2 < H) {
+      put(tty, x, d->head - 2, s_glyph[d->head - 2][x], C_TAIL);
+    }
+    put(tty, x, d->head - d->len, ' ', C_TAIL);
+    if (d->head - d->len >= H - 1) {
+      new_drop(d); /* the trail has left the screen */
+    }
+  }
+  /* Trails flicker: a few of their glyphs change. */
+  for (int i = 0; i < FLICKER; i++) {
+    int x = (int)(rnd() % W);
+    int y = (int)(rnd() % H);
+    int behind = s_drops[x].head - y; /* 2.. inside the trail */
+    if (s_glyph[y][x] != ' ' && behind >= 2) {
+      put(tty, x, y, matrix_glyph(), C_TAIL);
+    }
+  }
+  macjr_tty_write(tty, s_out, s_n);
+}
+
+/* ---- main ---------------------------------------------------------------- */
+
 int main(int argc, char *argv[], macjr_tty_t *tty) {
+  bool rainbow = false;
+  for (int i = 1; i < argc; i++) {
+    if (argv[i][0] == '-' && argv[i][1] == 'r') {
+      rainbow = true;
+    } else if (argv[i][0] == '-' && argv[i][1] == 'm') {
+      rainbow = false;
+    }
+  }
+
   int fd = open(KBD_DEV_PATH, O_RDONLY);
   if (fd >= 0) {
     fcntl(fd, F_SETFL, O_NONBLOCK);
   }
   s_seed = sys_millis() | 1; /* xorshift needs a non-zero seed */
+  matrix_init();
 
   out(tty, "\x1b[?25l\x1b[0m\x1b[2J");
   macjr_tty_header(tty, "PLASMA");
@@ -73,7 +176,11 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
       break;
     }
     if (!monitor_is_open()) { /* the monitor owns the screen while open */
-      draw_frame(tty);
+      if (rainbow) {
+        draw_rainbow(tty);
+      } else {
+        draw_matrix(tty);
+      }
       macjr_display_flush(tty);
     }
     sys_delay(FRAME_MS);
