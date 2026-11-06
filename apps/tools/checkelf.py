@@ -33,7 +33,9 @@ def exported(paths):
     names = set()
     for p in paths:
         with open(p) as f:
-            names |= set(re.findall(r"ESP_ELFSYM_EXPORT\((\w+)\)", f.read()))
+            text = f.read()
+            names |= set(re.findall(r"ESP_ELFSYM_EXPORT\((\w+)\)", text))
+            names |= set(re.findall(r"EXEC_EXPORT_AS\((\w+),", text))
     return names
 
 

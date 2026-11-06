@@ -21,9 +21,10 @@ extern "C" {
  *
  * FlashDB keeps up to two sector files open between calls; every call
  * ends with them flushed and synced, so what a call wrote survives a
- * power cut, and the SD card can be handed to USB between calls (calls
- * then fail with ESP_FAIL). Calls are thread-safe. Before db_init() they
- * return ESP_ERR_INVALID_STATE.
+ * power cut. Those files must not outlive the filesystem: db_close()
+ * before the card is unmounted, db_init() after it is back. Calls are
+ * thread-safe. Before db_init() and after db_close() they return
+ * ESP_ERR_INVALID_STATE.
  */
 #define DB_DIR SDCARD_MOUNT_POINT "/DB"
 #define DB_NAME "config" /* file names: at most 8 characters */
@@ -36,6 +37,9 @@ extern "C" {
  * imported once (keys the database doesn't have yet) and renamed to
  * config.old. Needs the SD card mounted. */
 esp_err_t db_init(void);
+
+/* Sync and close the database files. Watches stay open. */
+void db_close(void);
 
 /* Add a new pair. ESP_ERR_NOT_ALLOWED if the key already exists. */
 esp_err_t db_create(const char *key, const char *value);

@@ -11,8 +11,9 @@
 extern "C" {
 #endif
 
-/* Key that opens / closes the monitor (MK-52 Cx, see keyboard.h). */
-#define MONITOR_KEY KEY_MK_CX
+/* Key that opens / closes the monitor: MK-52 F and K pressed together
+ * (a chord, see keyboard.h). */
+#define MONITOR_KEY KEY_MK_F_K
 
 /* Start the monitor task. From then on MONITOR_KEY, pressed at any time,
  * saves the screen of `tty` and shows CPU load per core, internal RAM and
@@ -21,8 +22,8 @@ extern "C" {
  * and once `tty` exists. */
 esp_err_t monitor_start(macjr_tty_t *tty);
 
-/* Switch MONITOR_KEY handling off (for an app that needs that key itself,
- * like the MK-52 calculator) or back on. On by default. */
+/* Switch MONITOR_KEY handling off (for an app that needs that key itself)
+ * or back on. On by default. */
 void monitor_set_enabled(bool on);
 
 /* True while the monitor is on screen. Apps that keep updating the tty

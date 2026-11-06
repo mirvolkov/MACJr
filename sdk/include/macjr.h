@@ -17,7 +17,12 @@
  * A program runs in its own task, normally on CPU1 at idle priority, until
  * main() returns or it calls sys_exit(); the firmware keeps running its
  * own tasks (keyboard, sound, monitor) meanwhile and always comes first.
- * While the system monitor (Cx) is open it owns the screen: sys_getkey()
+ * F and Cx pressed together kill the program: it ends at its next
+ * blocking call (read(), select(), sys_getkey(), the delays), or, if it
+ * doesn't get to one within a second, where it stands. Its descriptors
+ * are closed and it is unloaded either way.
+ *
+ * While the system monitor (F and K together) is open it owns the screen: sys_getkey()
  * waits until it closes, so a program that draws after a key press never
  * paints over it.
  *
@@ -40,10 +45,11 @@ extern "C" {
 typedef int (*macjr_main_t)(int argc, char *argv[], macjr_tty_t *tty);
 
 /* Block until a key is pressed and return its code (KEY_* in the
- * firmware's keyboard.h; MK-52 keys are 128-159). */
+ * firmware's keyboard.h; MK-52 keys are 128-159, Cx comes as SYS_KEY_ESC). */
 int sys_getkey(void);
 
 #define SYS_KEY_ENTER 148 /* MK-52 В↑ */
+#define SYS_KEY_ESC   27  /* MK-52 Cx: "back", leave the screen or the program */
 
 /* Milliseconds since boot. */
 unsigned sys_millis(void);

@@ -6,6 +6,8 @@
  *
  * A program that needs something not listed here fails to load with
  * "Can't find symbol"; add the function to the right group below.
+ * EXEC_EXPORT_AS() entries stand in for libc/FreeRTOS calls of the same
+ * name (see exec_exports.h).
  */
 #include "exec_exports.h"
 
@@ -32,9 +34,11 @@
 #include "macjr.h"
 #include "mic.h"
 #include "monitor.h"
+#include "net.h"
 #include "png.h"
 #include "sdcard.h"
 #include "sdr.h"
+#include "tty/list.h"
 #include "usbdev.h"
 
 const struct esp_elfsym g_exec_exports[] = {
@@ -51,6 +55,10 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(macjr_tty_winsize),
   ESP_ELFSYM_EXPORT(macjr_tty_display),
   ESP_ELFSYM_EXPORT(macjr_display_flush),
+  ESP_ELFSYM_EXPORT(macjr_tty_list_init),
+  ESP_ELFSYM_EXPORT(macjr_tty_list_set_count),
+  ESP_ELFSYM_EXPORT(macjr_tty_list_move),
+  ESP_ELFSYM_EXPORT(macjr_tty_list_draw),
 
   /* system monitor */
   ESP_ELFSYM_EXPORT(monitor_is_open),
@@ -67,11 +75,15 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(ir_proto_name),
   ESP_ELFSYM_EXPORT(ir_tx_send),
   ESP_ELFSYM_EXPORT(ir_tx_send_raw),
+  ESP_ELFSYM_EXPORT(net_wifi_scan),
+  ESP_ELFSYM_EXPORT(net_wifi_connect),
+  ESP_ELFSYM_EXPORT(net_wifi_disconnect),
+  ESP_ELFSYM_EXPORT(net_wifi_status),
   ESP_ELFSYM_EXPORT(mic_init),
   ESP_ELFSYM_EXPORT(mic_uac_start),
   ESP_ELFSYM_EXPORT(sdr_init),
   ESP_ELFSYM_EXPORT(sdr_set_freq),
-  ESP_ELFSYM_EXPORT(sdcard_open_raw),
+  EXEC_EXPORT_AS(sdcard_open_raw, exec_sdcard_open_raw),
   ESP_ELFSYM_EXPORT(usbdev_start),
   ESP_ELFSYM_EXPORT(usbdev_msc_set_card),
   ESP_ELFSYM_EXPORT(usbdev_msc_status),
@@ -82,19 +94,25 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(esp_log_timestamp),
   ESP_ELFSYM_EXPORT(esp_err_to_name),
   ESP_ELFSYM_EXPORT(esp_timer_get_time),
-  ESP_ELFSYM_EXPORT(vTaskDelay),
+  EXEC_EXPORT_AS(vTaskDelay, exec_vTaskDelay),
   ESP_ELFSYM_EXPORT(esp_flash_get_size),
   ESP_ELFSYM_EXPORT(esp_get_free_heap_size),
 
   /* POSIX files (VFS) */
-  ESP_ELFSYM_EXPORT(open),
-  ESP_ELFSYM_EXPORT(read),
+  EXEC_EXPORT_AS(open, exec_open),
+  EXEC_EXPORT_AS(close, exec_close),
+  EXEC_EXPORT_AS(read, exec_read),
   ESP_ELFSYM_EXPORT(fcntl),
   ESP_ELFSYM_EXPORT(stat),
   ESP_ELFSYM_EXPORT(opendir),
   ESP_ELFSYM_EXPORT(readdir),
   ESP_ELFSYM_EXPORT(closedir),
-  ESP_ELFSYM_EXPORT(select),
+  EXEC_EXPORT_AS(select, exec_select),
+
+  /* process control */
+  EXEC_EXPORT_AS(usleep, exec_usleep),
+  EXEC_EXPORT_AS(sleep, exec_sleep),
+  EXEC_EXPORT_AS(exit, exec_exit),
 
   /* C library missing from the loader's table */
   ESP_ELFSYM_EXPORT(snprintf),

@@ -24,9 +24,15 @@ esp_err_t sdcard_info(uint64_t *total_bytes, uint64_t *free_bytes);
 
 /* Give up the filesystem and open the card for raw sector access (e.g. to
  * expose it as a USB drive): unmounts SDCARD_MOUNT_POINT if mounted, then
- * re-initializes the card without FAT. `*out` stays valid for good; use it
- * with sdmmc_read_sectors() / sdmmc_write_sectors(). */
+ * re-initializes the card without FAT. `*out` stays valid until
+ * sdcard_close_raw(); use it with sdmmc_read_sectors() /
+ * sdmmc_write_sectors(). */
 esp_err_t sdcard_open_raw(sdmmc_card_t **out);
+
+/* Back from sdcard_open_raw(): release the raw card and mount the
+ * filesystem again. Nobody may be using the raw card any more. Also works
+ * after a failed sdcard_open_raw(); does nothing if already mounted. */
+esp_err_t sdcard_close_raw(void);
 
 /* Unmount the card and free the SPI bus. */
 void sdcard_deinit(void);

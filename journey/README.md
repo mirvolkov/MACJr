@@ -22,6 +22,8 @@ support came together: what we tried, what broke, and how we fixed it.
 | 13 | [Programs from the SD card](13-programs-from-sd.md) | ELF apps loaded into PSRAM and run on the second core |
 | 14 | [An IR port](14-ir-remote.md) | A receiver ported from MicroPython, an RMT transmitter, and a remote control |
 | 15 | [Waiting without polling](15-flashdb-select-watch.md) | FlashDB for config, `select()` on the keyboard, database watches, matrix rain |
+| 16 | [On the air](16-wifi.md) | A scrolling list window, the Wi-Fi station and a program to join a network |
+| 17 | [Kill, and leave no mess](17-kill-and-cleanup.md) | ESC and key chords, killing programs, USB and the SD card put back |
 
 For the compact list of every step so far, open issues and what comes
 next, see [roadmap.txt](roadmap.txt).

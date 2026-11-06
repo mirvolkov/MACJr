@@ -80,8 +80,7 @@ PLASMA got a second mode: `-r` for the old rainbow noise, `-m` for a
 matrix-style rain. In the rain, each column has a falling drop with a
 white head, a bright-green cell behind it and a green trail that
 flickers. The boot menu passes no arguments, so matrix is the default.
-The firmware doesn't export `strcmp()`, so the options are checked by
-their first two characters.
+The options are checked by their first two characters.
 
 **Result:** a sturdier config store, a keyboard and a database that
 work with `select()`, and a pattern any new device can copy: a queue

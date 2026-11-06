@@ -121,11 +121,10 @@ static void draw_state(const mk52_t *m) {
   draw_disp(disp);
 }
 
-/* Never returns: the calculator runs until power off. Needs Cx, so the
- * system monitor is switched off for it. */
+/* Never returns: the calculator runs until power off. Cx comes as ESC
+ * but stays the calculator's clear key here. */
 int main(int argc, char *argv[], macjr_tty_t *tty) {
   static mk52_t m;
-  monitor_set_enabled(false);
   s_tty = tty;
   mk52_reset(&m);
 

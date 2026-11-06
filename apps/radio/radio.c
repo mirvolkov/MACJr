@@ -40,7 +40,8 @@
 #define INT_DIGITS 3  /* MHz part: up to 150 */
 #define FRAC_DIGITS 6 /* down to 1 Hz */
 #define KEY_SET KEY_MK_ENTER    /* В↑ */
-#define KEY_DEL KEY_MK_STEP_BCK /* ←ШГ (Cx belongs to the monitor) */
+#define KEY_DEL KEY_MK_STEP_BCK /* ←ШГ */
+#define KEY_BACK KEY_ESC        /* Cx: drop what was typed */
 /* Tuning range: the LO's quadrature floor up to the 10 m band */
 #define RADIO_MIN_HZ SDR_MIN_FREQ_HZ
 #define RADIO_MAX_HZ 28000000u
@@ -105,7 +106,7 @@ static void draw_static(bool lo_ok, bool uac_ok) {
                        : "\x1b[96mUAC     \x1b[91mmic init failed");
   /* 0-9 . MHz   ШГ delete   В^ set */
   line(ROW_RANGE, "\x1b[90m Tune 4.762 - 28 MHz");
-  line(ROW_HINT, "\x1b[90m 0-9 . MHz   \x98\x83 delete   \x82^ set");
+  line(ROW_HINT, "\x1b[90m 0-9 . MHz  \x98\x83 del  \x82^ set  Cx clear");
 }
 
 /* Add a typed character to `input` if it keeps the form ddd.dddddd. */
@@ -227,6 +228,8 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
       type(input, (char)('0' + d));
     } else if (code == KEY_MK_DOT) {
       type(input, '.');
+    } else if (code == KEY_BACK) {
+      input[0] = '\0';
     } else if (code == KEY_DEL) {
       size_t len = strlen(input);
       if (len) {

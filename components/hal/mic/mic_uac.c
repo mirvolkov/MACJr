@@ -12,6 +12,9 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "tusb.h"
 #include "usb_device_uac.h"
 #include "usbdev.h"
 
@@ -28,6 +31,8 @@
 #define READ_TIMEOUT_MS 50
 
 static const char *TAG = "mic_uac";
+
+static bool s_streaming;
 
 static esp_err_t uac_input_cb(uint8_t *buf, size_t len, size_t *bytes_read, void *ctx) {
   (void)ctx;
@@ -60,6 +65,21 @@ esp_err_t mic_uac_start(void) {
     ESP_LOGE(TAG, "uac_device_init failed: %s", esp_err_to_name(ret));
     return ret;
   }
+  s_streaming = true;
   ESP_LOGI(TAG, "USB UAC mic streaming (%d ch @ %d Hz)", MIC_CHANNELS, MIC_SAMPLE_RATE);
   return ESP_OK;
+}
+
+/* usb_device_uac has no deinit: its mic task stays, and uac_device_init()
+ * is a no-op next time. What idles the task is what the host does when it
+ * closes the stream; the next stream wakes it. */
+void mic_uac_stop(void) {
+  if (s_streaming) {
+    tusb_control_request_t close_stream = {.wIndex = USBDEV_ITF_MIC, .wValue = 0};
+    tud_audio_set_itf_close_EP_cb(0, &close_stream);
+    /* a mic_read() under way ends before the ADC goes */
+    vTaskDelay(pdMS_TO_TICKS(2 * READ_TIMEOUT_MS));
+    s_streaming = false;
+  }
+  mic_deinit();
 }

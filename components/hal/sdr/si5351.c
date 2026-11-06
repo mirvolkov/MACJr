@@ -104,7 +104,8 @@ esp_err_t si5351_init(i2c_master_bus_handle_t bus)
         .device_address = SI5351_ADDR,
         .scl_speed_hz = SI5351_I2C_HZ,
     };
-    if ((ret = i2c_master_bus_add_device(bus, &dev_cfg, &s_dev)) != ESP_OK) {
+    /* the handle stays from an earlier run of the radio */
+    if (!s_dev && (ret = i2c_master_bus_add_device(bus, &dev_cfg, &s_dev)) != ESP_OK) {
         return ret;
     }
 

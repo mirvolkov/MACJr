@@ -128,6 +128,17 @@ esp_err_t sdcard_open_raw(sdmmc_card_t **out)
     return ESP_OK;
 }
 
+esp_err_t sdcard_close_raw(void)
+{
+    if (s_raw_open) {
+        sdspi_host_remove_device(s_raw_card.host.slot);
+        spi_bus_free(SD_HOST);
+        s_raw_open = false;
+        ESP_LOGI(TAG, "Raw card closed");
+    }
+    return s_card ? ESP_OK : sdcard_init();
+}
+
 void sdcard_deinit(void)
 {
     if (!s_card) {

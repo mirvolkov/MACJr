@@ -23,8 +23,16 @@ typedef enum {
 
 /* Bring up the USB PHY and TinyUSB in `mode`. Takes the native USB port
  * from USB-Serial-JTAG (flash and monitor through the other USB-C port
- * then). For USBDEV_MODE_MSC call usbdev_msc_set_card() first. Call once. */
+ * then). For USBDEV_MODE_MSC call usbdev_msc_set_card() first.
+ * ESP_ERR_INVALID_STATE if USB is already up. */
 esp_err_t usbdev_start(usbdev_mode_t mode);
+
+/* Back to the default: detach from the host, stop TinyUSB and give the
+ * native USB port to USB-Serial-JTAG again, as after reset. Any mode can
+ * start afterwards. A USB drive lets go of its card first, once a transfer
+ * under way has ended; the host sees the drive pulled out, so what it
+ * hadn't written yet is lost. Does nothing if USB isn't up. */
+void usbdev_stop(void);
 
 /* The card the USB drive exposes, opened raw (sdcard_open_raw). */
 void usbdev_msc_set_card(sdmmc_card_t *card);

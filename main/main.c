@@ -1,13 +1,14 @@
 /*
  * Firmware entry point: brings up the board HALs (SD card, keyboard, IR
- * receiver, ST7789 display), starts the system monitor (key Cx), then loops over the boot
+ * receiver, ST7789 display), starts the system monitor (keys F+K), then loops over the boot
  * menu (components/boot) and the program picked there: one from /BIN on
  * the SD card, loaded and run by components/exec (apps/: IDE demo, MK-52
  * calculator, SoftRock SDR radio, USB drive, port layout picture, remote
- * control, hello). A program can also be built into the firmware while
- * it is developed: pass it to boot_select() as a boot_builtin_t.
- * В↑ goes back to the menu when a program ends; programs that never return
- * (radio, USB drive, MK-52) stay until the next reboot.
+ * control, Wi-Fi, hello). A program can also be built into the firmware
+ * while it is developed: pass it to boot_select() as a boot_builtin_t.
+ * Cx goes back to the menu when a program ends; F and Cx together kill a
+ * program, which is how to leave those that never return (radio, USB
+ * drive, MK-52).
  */
 #include <errno.h>
 #include <fcntl.h>

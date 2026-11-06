@@ -5,5 +5,5 @@ idf_component_register(
   SRCS "mic.c" "mic_uac.c"
   INCLUDE_DIRS "."
   REQUIRES esp_adc
-  PRIV_REQUIRES espressif__usb_device_uac usbdev
+  PRIV_REQUIRES espressif__usb_device_uac espressif__tinyusb usbdev freertos
 )

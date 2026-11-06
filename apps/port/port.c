@@ -99,11 +99,11 @@ static void port_redraw(void *ctx) {
   }
 }
 
-/* Show the picture until В↑, then return to the menu. */
+/* Show the picture until Cx, then return to the menu. */
 int main(int argc, char *argv[], macjr_tty_t *tty) {
   port_show(tty, macjr_tty_display(tty));
   monitor_set_redraw_cb(port_redraw, NULL);
-  while (sys_getkey() != SYS_KEY_ENTER) {
+  while (sys_getkey() != SYS_KEY_ESC) {
   }
   monitor_set_redraw_cb(NULL, NULL); /* the callback goes away with us */
   return 0;

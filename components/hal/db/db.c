@@ -180,6 +180,17 @@ esp_err_t db_init(void) {
   return unlock(ESP_OK);
 }
 
+void db_close(void) {
+  if (!lock()) {
+    return;
+  }
+  sync_files();
+  fdb_kvdb_deinit(&s_kvdb);
+  s_ready = false;
+  xSemaphoreGiveRecursive(s_lock);
+  ESP_LOGI(TAG, "closed");
+}
+
 esp_err_t db_create(const char *key, const char *value) {
   if (!valid_key(key) || !value) {
     return ESP_ERR_INVALID_ARG;

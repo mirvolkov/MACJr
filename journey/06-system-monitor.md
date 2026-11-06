@@ -54,3 +54,6 @@ format string (`line(13, "")`). Both were one-line fixes.
 
 **Result:** an overlay that works on top of any screen. The bars turn
 yellow above 50 % and red above 80 %.
+
+*Later:* Cx became ESC, and F and K pressed together now open the monitor
+([story 17](17-kill-and-cleanup.md)).

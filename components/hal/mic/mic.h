@@ -34,6 +34,11 @@ void mic_deinit(void);
  * native USB connector disappears once this runs. */
 esp_err_t mic_uac_start(void);
 
+/* Stop streaming and release the ADC (mic_deinit()), after usbdev_stop():
+ * with USB down the host can't reopen the stream meanwhile. mic_init() and
+ * mic_uac_start() can then be called again. */
+void mic_uac_stop(void);
+
 #ifdef __cplusplus
 }
 #endif

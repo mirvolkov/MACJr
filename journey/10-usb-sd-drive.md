@@ -85,3 +85,6 @@ story 9).
 full speed (up to about 1 MB/s). The file list on screen is the card as
 it was when the mode started, and the card stays with the host until the
 next reboot.
+
+*Later:* killing the program now detaches the drive and mounts the card
+again, no reboot needed ([story 17](17-kill-and-cleanup.md)).

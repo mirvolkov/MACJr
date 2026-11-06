@@ -111,7 +111,7 @@ static void mem_line(int r, const char *name, uint32_t caps) {
 static void draw_static(void) {
   out("\x1b[?25l\x1b[0m\x1b[2J");
   macjr_tty_header(s_tty, "MacJr system monitor");
-  line(15, "\x1b[90m Press key %d to close", MONITOR_KEY);
+  line(15, "\x1b[90m Press F and K together to close");
 }
 
 static void draw_stats(const cpu_sample_t *prev, const cpu_sample_t *cur) {

@@ -7,18 +7,48 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "tusb.h"
 #include "usbdev_priv.h"
 
 static const char *TAG = "usb_msc";
 
 static sdmmc_card_t *s_card;
+static SemaphoreHandle_t s_card_lock; /* held during a transfer */
 static volatile bool s_ejected;
 static volatile uint64_t s_read;
 static volatile uint64_t s_written;
 
 void usbdev_msc_set_card(sdmmc_card_t *card) {
+  if (!s_card_lock) {
+    s_card_lock = xSemaphoreCreateMutex();
+  }
+  xSemaphoreTake(s_card_lock, portMAX_DELAY);
   s_card = card;
+  s_ejected = false;
+  s_read = 0;
+  s_written = 0;
+  xSemaphoreGive(s_card_lock);
+}
+
+/* Sectors from/to the card, or -1. `write` picks the direction. */
+static int32_t transfer(bool write, uint32_t lba, uint32_t offset, void *buffer, uint32_t bufsize) {
+  int32_t ret = -1;
+  xSemaphoreTake(s_card_lock, portMAX_DELAY);
+  if (s_card) {
+    size_t sector = s_card->csd.sector_size;
+    if (offset % sector == 0 && bufsize % sector == 0) {
+      size_t start = lba + offset / sector;
+      esp_err_t err = write ? sdmmc_write_sectors(s_card, buffer, start, bufsize / sector)
+                            : sdmmc_read_sectors(s_card, buffer, start, bufsize / sector);
+      if (err == ESP_OK) {
+        ret = (int32_t)bufsize;
+      }
+    }
+  }
+  xSemaphoreGive(s_card_lock);
+  return ret;
 }
 
 void usbdev_msc_status(usbdev_msc_status_t *out) {
@@ -63,34 +93,20 @@ bool tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool start, boo
  * with CFG_TUD_MSC_EP_BUFSIZE a multiple of 512 it always lands on a sector. */
 int32_t tud_msc_read10_cb(uint8_t lun, uint32_t lba, uint32_t offset, void *buffer, uint32_t bufsize) {
   (void)lun;
-  if (!s_card) {
-    return -1;
+  int32_t ret = transfer(false, lba, offset, buffer, bufsize);
+  if (ret > 0) {
+    s_read += bufsize;
   }
-  size_t sector = s_card->csd.sector_size;
-  if (offset % sector || bufsize % sector) {
-    return -1;
-  }
-  if (sdmmc_read_sectors(s_card, buffer, lba + offset / sector, bufsize / sector) != ESP_OK) {
-    return -1;
-  }
-  s_read += bufsize;
-  return (int32_t)bufsize;
+  return ret;
 }
 
 int32_t tud_msc_write10_cb(uint8_t lun, uint32_t lba, uint32_t offset, uint8_t *buffer, uint32_t bufsize) {
   (void)lun;
-  if (!s_card) {
-    return -1;
+  int32_t ret = transfer(true, lba, offset, buffer, bufsize);
+  if (ret > 0) {
+    s_written += bufsize;
   }
-  size_t sector = s_card->csd.sector_size;
-  if (offset % sector || bufsize % sector) {
-    return -1;
-  }
-  if (sdmmc_write_sectors(s_card, buffer, lba + offset / sector, bufsize / sector) != ESP_OK) {
-    return -1;
-  }
-  s_written += bufsize;
-  return (int32_t)bufsize;
+  return ret;
 }
 
 /* SCSI commands TinyUSB does not handle itself: refuse them. */

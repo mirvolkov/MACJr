@@ -3,7 +3,7 @@
  *
  * Shows its arguments and where the loader put it (code runs from the
  * PSRAM instruction bus alias at 0x42..., data sits at 0x3C...), then
- * echoes the MK-52 labels of the keys pressed until В↑ and returns how
+ * echoes the MK-52 labels of the keys pressed until Cx and returns how
  * many keys it got.
  */
 #include <stdarg.h>
@@ -87,11 +87,11 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
   tprintf("\x1b[96mruns   \x1b[97m%d   \x1b[96mcpu \x1b[97m%d\r\n", s_runs, sys_cpu());
   free(heap);
 
-  tprintf("\x1b[90mKeys echo here, \x82^ ends\x1b[0m\r\n");
+  tprintf("\x1b[90mKeys echo here, Cx ends\x1b[0m\r\n");
   int keys = 0;
   for (;;) {
     int key = sys_getkey();
-    if (key == SYS_KEY_ENTER) {
+    if (key == SYS_KEY_ESC) {
       break;
     }
     keys++;

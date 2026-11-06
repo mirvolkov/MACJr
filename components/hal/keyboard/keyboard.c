@@ -12,7 +12,12 @@
  * pull-up.
  *
  * Each debounced key press is published as a one-byte key code on the
- * character device /dev/kbrd. Every open() gets its own queue, so all
+ * character device /dev/kbrd; Cx as KEY_ESC. A key that starts a chord
+ * (s_chords) is held back while it is down: its partner turns the pair
+ * into the chord's code, a release or any other key lets it through.
+ * Two keys are always read correctly; the matrix has no diodes, so three
+ * keys on the corners of a rectangle would show a fourth (ghosting).
+ * Every open() gets its own queue, so all
  * readers see every key. select() reports a descriptor readable while its
  * queue has keys: each select() in progress is registered here, and
  * key_publish() wakes the ones watching a queue that just got a key.
@@ -60,9 +65,12 @@ static const char *TAG = "keyboard";
 /* At least one tick: with CONFIG_FREERTOS_HZ=100 a 5 ms delay rounds to 0. */
 #define KBD_SCAN_TICKS  (pdMS_TO_TICKS(KBD_SCAN_MS) > 0 ? pdMS_TO_TICKS(KBD_SCAN_MS) : 1)
 
-#define KBD_MAX_READERS 4      /* simultaneous open() of /dev/kbrd */
+/* Simultaneous open() of /dev/kbrd. While a program runs the firmware
+ * holds 4 (key beep, monitor, exec's kill watch and sys_getkey() queue). */
+#define KBD_MAX_READERS 8
 #define KBD_QUEUE_BYTES 32     /* per reader; keys are dropped when full */
 #define KBD_MAX_SELECTS 4      /* select() calls waiting at the same time */
+#define KBD_RAW_CX      140    /* matrix code of Cx, published as KEY_ESC */
 
 typedef struct {
     uint8_t kbd_pin; /* keyboard connector pin */
@@ -85,6 +93,16 @@ static const kbd_line_t s_cols[KBD_COLS] = {
 #define COL_BIT(pin) (1u << ((pin) - 2))
 static const uint16_t s_row_cols[KBD_ROWS] = {
     COL_BIT(5) | COL_BIT(6), 0x3FF, 0x3FF, 0x3FF,
+};
+
+/* Two keys pressed together, published as `code`. */
+typedef struct {
+    uint8_t a, b, code;
+} kbd_chord_t;
+
+static const kbd_chord_t s_chords[] = {
+    { KEY_MK_F, KEY_MK_K, KEY_MK_F_K },
+    { KEY_MK_F, KEY_ESC, KEY_MK_F_ESC },
 };
 
 typedef struct {
@@ -150,13 +168,19 @@ static esp_err_t mcp_configure_matrix(void)
     return mcp_write(MCP_OLATA, 0x00); /* a row switched to output drives low */
 }
 
-/* Number the existing keys row by row: KBD_KEYCODE_BASE .. +KBD_KEY_COUNT-1. */
+/* Number the existing keys row by row: KBD_KEYCODE_BASE .. +KBD_KEY_COUNT-1,
+ * except Cx, which is KEY_ESC. */
 static void keycodes_assign(void)
 {
     uint8_t code = KBD_KEYCODE_BASE;
     for (int r = 0; r < KBD_ROWS; r++) {
         for (int c = 0; c < KBD_COLS; c++) {
-            s_keycode[r][c] = (s_row_cols[r] & (1u << c)) ? code++ : 0;
+            if (s_row_cols[r] & (1u << c)) {
+                s_keycode[r][c] = code == KBD_RAW_CX ? KEY_ESC : code;
+                code++;
+            } else {
+                s_keycode[r][c] = 0;
+            }
         }
     }
 }
@@ -181,7 +205,6 @@ static esp_err_t matrix_scan(uint16_t out[KBD_ROWS])
     return mcp_write(MCP_IODIRA, 0xFF); /* release all rows */
 }
 
-/* Hand a key code to every open reader; a full queue drops the key. */
 /* Wake the select() calls watching reader `fd`. Under s_readers_lock. */
 static void select_notify(int fd)
 {
@@ -194,6 +217,7 @@ static void select_notify(int fd)
     }
 }
 
+/* Hand a key code to every open reader; a full queue drops the key. */
 static void key_publish(uint8_t code)
 {
     xSemaphoreTake(s_readers_lock, portMAX_DELAY);
@@ -205,8 +229,62 @@ static void key_publish(uint8_t code)
     xSemaphoreGive(s_readers_lock);
 }
 
+/* The chord `a` and `b` make, or 0. */
+static uint8_t chord_of(uint8_t a, uint8_t b)
+{
+    for (size_t i = 0; i < sizeof(s_chords) / sizeof(s_chords[0]); i++) {
+        const kbd_chord_t *ch = &s_chords[i];
+        if ((ch->a == a && ch->b == b) || (ch->a == b && ch->b == a)) {
+            return ch->code;
+        }
+    }
+    return 0;
+}
+
+static bool starts_chord(uint8_t code)
+{
+    for (size_t i = 0; i < sizeof(s_chords) / sizeof(s_chords[0]); i++) {
+        if (s_chords[i].a == code || s_chords[i].b == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* A key went down: publish it, hold it back as a possible chord, or
+ * complete the chord the held key started. `*held`: the key held back, 0
+ * if none. */
+static void key_down(uint8_t code, uint8_t *held)
+{
+    if (*held) {
+        uint8_t chord = chord_of(*held, code);
+        if (chord) {
+            *held = 0;
+            key_publish(chord);
+            return;
+        }
+        key_publish(*held); /* not a chord: the held key came first */
+        *held = 0;
+    }
+    if (starts_chord(code)) {
+        *held = code;
+    } else {
+        key_publish(code);
+    }
+}
+
+/* A key went up: if it was held back, it was pressed alone. */
+static void key_up(uint8_t code, uint8_t *held)
+{
+    if (*held == code) {
+        *held = 0;
+        key_publish(code);
+    }
+}
+
 static void scan_task(void *arg)
 {
+    uint8_t held = 0; /* key held back as the start of a chord */
     uint16_t raw[KBD_ROWS], prev_raw[KBD_ROWS] = { 0 };
     TickType_t last_wake = xTaskGetTickCount();
     for (;;) {
@@ -219,12 +297,16 @@ static void scan_task(void *arg)
             /* Debounce: accept a row only after two identical scans. */
             uint16_t changed = (raw[r] == prev_raw[r]) ? (raw[r] ^ s_stable[r]) : 0;
             prev_raw[r] = raw[r];
-            uint16_t pressed = changed & raw[r];
             for (int c = 0; c < KBD_COLS; c++) {
-                if (pressed & (1u << c)) {
+                if (!(changed & (1u << c))) {
+                    continue;
+                }
+                if (raw[r] & (1u << c)) {
                     ESP_LOGD(TAG, "key %u (pin %d x pin %d)", s_keycode[r][c],
                              s_rows[r].kbd_pin, s_cols[c].kbd_pin);
-                    key_publish(s_keycode[r][c]);
+                    key_down(s_keycode[r][c], &held);
+                } else {
+                    key_up(s_keycode[r][c], &held);
                 }
             }
             s_stable[r] ^= changed;
@@ -285,6 +367,7 @@ static int kbrd_open(void *ctx, const char *path, int flags, int mode)
     }
     xSemaphoreGive(s_readers_lock);
     vStreamBufferDelete(buf);
+    ESP_LOGW(TAG, "%s: all %d readers taken", KBD_DEV_PATH, KBD_MAX_READERS);
     errno = ENFILE;
     return -1;
 }

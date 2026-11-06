@@ -68,3 +68,6 @@ match = match && k < key_len && (unsigned char)key[k] == c;
 **Result:** `db_init()` runs at boot right after the SD card mounts and
 creates `config.db` if it is missing. Settings can now be stored, read
 back and edited by hand on a computer.
+
+*Later:* FlashDB replaced the text file
+([story 15](15-flashdb-select-watch.md)).

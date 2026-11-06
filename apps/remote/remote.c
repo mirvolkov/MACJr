@@ -1,6 +1,6 @@
 /*
  * REMOTE.ELF -- remote control: shows the last IR command received and
- * sends it again on А↑.
+ * sends it again on А↑; Cx ends it.
  *
  *   ════════════ Remote control ════════════
  *
@@ -12,7 +12,7 @@
  *
  *   Sent      NEC 0x00/0x45
  *
- *    А↑ send again   В↑ exit
+ *    А↑ send again   Cx exit
  *
  * A protocol the decoder doesn't know is replayed from its raw burst.
  * The receiver also hears what the LED sends, so a sent command shows up
@@ -93,7 +93,7 @@ static void draw_all(void) {
   macjr_tty_header(s_tty, "Remote control");
   draw_last();
   draw_sent();
-  line(ROW_HINT, "\x1b[90m \x80^ send again   \x82^ exit"); /* А↑, В↑ in CP866 */
+  line(ROW_HINT, "\x1b[90m \x80^ send again   Cx exit"); /* А↑ in CP866 */
   macjr_display_flush(s_tty);
 }
 
@@ -162,7 +162,7 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
     }
     uint8_t key;
     if (key_ready && read(fd, &key, 1) == 1 && !monitor_is_open()) {
-      if (key == KEY_MK_ENTER) {
+      if (key == KEY_ESC) {
         break;
       }
       if (key == KEY_SEND) {

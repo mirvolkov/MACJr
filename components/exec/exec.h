@@ -27,14 +27,19 @@ esp_err_t exec_run(macjr_tty_t *tty, const char *path, int argc, char **argv, in
 #define EXEC_PRIORITY   0
 #define EXEC_STACK_SIZE 12288 /* the MK-52 formats floats */
 
+/* Exit code of a killed program: 128 + SIGKILL (9), as Unix shells show
+ * it. */
+#define EXEC_KILLED 137
+
 /* exec_run() in a new task on EXEC_CORE; the caller blocks until the
- * program ends. Also ESP_ERR_NO_MEM if the task can't be created. One
- * program at a time. */
+ * program ends. F and Cx pressed together kill it meanwhile (exit code
+ * EXEC_KILLED; see exec.c). Also ESP_ERR_NO_MEM if the task can't be
+ * created. One program at a time. */
 esp_err_t exec_spawn(macjr_tty_t *tty, const char *path, int argc, char **argv, int *status);
 
 /* Run the program at `path` with exec_spawn() (argv[0] = its file name)
  * on a cleared screen, then show its exit code or why it couldn't run and
- * wait for В↑. */
+ * wait for Cx. A killed program returns at once, without a message. */
 void exec_launch(macjr_tty_t *tty, const char *path);
 
 /* exec_launch() for a program built into the firmware: `entry` is its

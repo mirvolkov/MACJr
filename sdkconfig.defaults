@@ -60,3 +60,11 @@ CONFIG_ELF_LOADER_LOAD_PSRAM=y
 CONFIG_ELF_LOADER_LIBC_SYMBOLS=y
 # CONFIG_ELF_LOADER_ESPIDF_SYMBOLS is not set
 # CONFIG_ELF_LOADER_CUSTOMER_SYMBOLS is not set
+
+# Wi-Fi (components/hal/net): the firmware outgrew the 1 MB app partition,
+# so the single-app layout with a 1.5 MB one. Wi-Fi and lwIP buffers go to
+# PSRAM where they can, to spare internal RAM; the TCP/IP task stays on
+# CPU0 with the Wi-Fi task, leaving CPU1 to programs.
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y

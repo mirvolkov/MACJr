@@ -15,13 +15,22 @@ extern "C" {
  * key. read() blocks until a key arrives unless O_NONBLOCK is set (then it
  * fails with EAGAIN). select() reports the descriptor readable while keys
  * are waiting, so a program can wait for keys together with other
- * descriptors, or with a timeout. Key releases are not reported. */
+ * descriptors, or with a timeout. Key releases are not reported.
+ *
+ * Two exceptions to "one byte per key, on press":
+ *  - Cx is sent as KEY_ESC (ASCII 27). Every program treats it as "back":
+ *    leave the current screen, or end the program.
+ *  - Keys that start a chord (F, K, Cx) are sent when released, unless
+ *    a partner is pressed while they are held: then the chord's own code
+ *    is sent instead of either key (KEY_MK_F_K, KEY_MK_F_ESC). Another key
+ *    pressed while one is held sends the held key first. */
 #define KBD_DEV_PATH "/dev/kbrd"
 
 /* Raw key codes, not yet mapped to ASCII: the 32 keys are numbered
  * KBD_KEYCODE_BASE..KBD_KEYCODE_BASE + KBD_KEY_COUNT - 1 row by row
  * (row pins 1, 12, 13, 14; columns by pin 2..11), so row pin 1 x col pin 5
- * is 128 and row pin 14 x col pin 11 is 159. */
+ * is 128 and row pin 14 x col pin 11 is 159. Cx (140) alone is sent as
+ * KEY_ESC instead. */
 #define KBD_KEYCODE_BASE 128
 #define KBD_KEY_COUNT    32
 
@@ -33,7 +42,9 @@ extern "C" {
  *  row 1   F   158  ШГ→ 155  П→x 156  7   131  8   130  9   138  −   144  ÷   149
  *  row 2   K   150  ←ШГ 151  x→П 157  4   137  5   135  6   136  +   142  ×   143
  *  row 3   ↑↓  128  В/О 153  БП  154  1   134  2   133  3   139  ↔   147  В↑  148
- *  row 4   А↑  129  С/П 152  ПП  159  0   132  .   145  /-/ 146  ВП  141  Cx  140
+ *  row 4   А↑  129  С/П 152  ПП  159  0   132  .   145  /-/ 146  ВП  141  Cx  140*
+ *
+ *  * sent as KEY_ESC (27)
  *
  * Sorted by code:
  *  128 ↑↓   129 А↑   130 8    131 7    132 0    133 2    134 1    135 5
@@ -54,7 +65,8 @@ extern "C" {
 #define KEY_MK_DOT      145 /* .   decimal point */
 #define KEY_MK_NEG      146 /* /-/ change sign */
 #define KEY_MK_EE       141 /* ВП  enter exponent */
-#define KEY_MK_CX       140 /* Cx  clear X */
+#define KEY_ESC         27  /* ASCII ESC: "back" */
+#define KEY_MK_CX       KEY_ESC /* Cx  clear X, sent as ESC (matrix code 140) */
 #define KEY_MK_ENTER    148 /* В↑  push X up the stack */
 #define KEY_MK_SWAP     147 /* ↔   swap X and Y */
 #define KEY_MK_PLUS     142 /* +   */
@@ -74,11 +86,16 @@ extern "C" {
 #define KEY_MK_UPDOWN   128 /* ↑↓  built-in memory exchange */
 #define KEY_MK_A_UP     129 /* А↑  set built-in memory address */
 
+/* Chords: two keys held together. */
+#define KEY_MK_F_K      160 /* F and K: system monitor */
+#define KEY_MK_F_ESC    161 /* F and Cx: kill the running program */
+
 /* Bring up the I2C bus and the MCP23018 expander, register KBD_DEV_PATH and
  * start the matrix scan task. Call once at startup. */
 esp_err_t keyboard_init(void);
 
-/* True if the key with this code is currently held down (debounced). Right
+/* True if the key with this code (KEY_ESC for Cx; not a chord) is
+ * currently held down (debounced). Right
  * after keyboard_init() it waits for the first scans to finish, so it can be
  * used at boot to check for a key held since power-up. */
 bool keyboard_key_down(uint8_t code);
