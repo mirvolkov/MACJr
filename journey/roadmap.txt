@@ -1,26 +1,23 @@
 TODO: 
 
 - UAC mic is not good
-- radio still calls mic_init(): the mic inputs are gone, and GPIO4 is the IR LED now
-- REMOTE: move from the firmware (boot menu built-in) to apps/ when done
-- multiple key scancodes + update symbol table with cyrillic + fix some symbols
-- usb mouse (nice to have)
+- usb keyboard (nice to have)
 - RTOS (real time must be kept for SDR if possible)
     sqlite based database for shared access
     process model, memory paging, signal mechanism (IPC)
-    window system
     stadrad library, crosscompiler...
-
+    KERNEL - memory/process/fs management
 
 Extensions and improvements:
 - tango nano as keyboard scanner and PSRAM extension
 - extend external port with SPI
 - VGA output with 80x25 screen size
+- IR TX power by transistor key 
 
 Apps:
 - audio player, volume control
 - MC (or dos navigator - https://github.com/maximmasiutin/Dos-Navigator)
-- wifi connect. fetch date/time; wifi shared folder; network stack?
+- fetch date/time; network stack?
 - gpaphic plotters, matrix op visualizer? 
 - micropython
-- screenshot maker by key combination
+- games? tetris, Roguelike, 
