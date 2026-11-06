@@ -12,6 +12,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 static const char *TAG = "tty_hal";
 
@@ -30,6 +31,9 @@ static inline uint16_t to565(uint32_t rgb888)
  * The window is double-buffered: flush_row() only queues the transfer and
  * switches to the other buffer, so drawing the next window overlaps with
  * sending this one. A buffer is reused only after its last transfer is done.
+ *
+ * The panel can't be read back, so whatever goes to it is also kept in
+ * s_shadow, a copy of the screen in PSRAM, for screenshots.
  */
 #define ROW_BUF_CAP 40 /* px tall, matches lcd.c's BUFFER_LINES sizing */
 
@@ -39,6 +43,7 @@ static int s_cur;                /* buffer being drawn into */
 static uint16_t *s_row_buf;      /* s_bufs[s_cur] */
 static int s_row_y0 = -1; /* top y of the buffered window, -1 = empty */
 static int s_row_h = 0;   /* valid rows currently held in s_row_buf */
+static uint16_t *s_shadow; /* the whole screen as sent, NULL if it didn't fit */
 
 /*
  * Pixels written in the current window, per buffered row: [x0, x1), empty
@@ -56,6 +61,13 @@ static void flush_row(macjr_hal_display_t *d)
 {
     if (s_row_y0 < 0) {
         return;
+    }
+    for (int r = 0; s_shadow && r < s_row_h; r++) {
+        if (s_dirty_x0[r] < s_dirty_x1[r]) {
+            size_t row = (size_t)r * (size_t)d->width_px + s_dirty_x0[r];
+            size_t screen = (size_t)(s_row_y0 + r) * (size_t)d->width_px + s_dirty_x0[r];
+            memcpy(&s_shadow[screen], &s_row_buf[row], (size_t)(s_dirty_x1[r] - s_dirty_x0[r]) * sizeof(uint16_t));
+        }
     }
     int run = -1; /* first row of the pending full-width run */
     uint32_t ticket = 0;
@@ -247,6 +259,20 @@ static void hal_blit_rgb888(macjr_hal_display_t *d, int x, int y, int w, int h, 
     }
 }
 
+/* From the panel's byte-swapped RGB565, low bits filled from the high ones
+ * so that white stays 255. */
+static void hal_read_rgb888(macjr_hal_display_t *d, uint8_t *rgb)
+{
+    size_t n = (size_t)d->width_px * (size_t)d->height_px;
+    for (size_t i = 0; i < n; i++) {
+        uint16_t v = __builtin_bswap16(s_shadow[i]);
+        uint8_t r = v >> 11, g = (v >> 5) & 0x3F, b = v & 0x1F;
+        *rgb++ = (uint8_t)(r << 3 | r >> 2);
+        *rgb++ = (uint8_t)(g << 2 | g >> 4);
+        *rgb++ = (uint8_t)(b << 3 | b >> 2);
+    }
+}
+
 /* Bring up the LCD panel and a DMA-capable row buffer, then wire up the
  * macjr_hal_display_t entry points above. See display_hal.h for ownership. */
 macjr_hal_display_t *display_hal_init(void)
@@ -268,6 +294,10 @@ macjr_hal_display_t *display_hal_init(void)
         s_bufs[1] = s_bufs[0];
     }
     s_row_buf = s_bufs[0];
+    s_shadow = heap_caps_calloc((size_t)LCD_H_RES * LCD_V_RES, sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    if (!s_shadow) {
+        ESP_LOGW(TAG, "no room for a copy of the screen: no screenshots");
+    }
 
     static macjr_hal_display_t hal;
     hal.ctx = NULL;
@@ -278,5 +308,6 @@ macjr_hal_display_t *display_hal_init(void)
     hal.fill_rect = hal_fill_rect;
     hal.blit_1bpp_mask = hal_blit_1bpp;
     hal.blit_rgb888 = hal_blit_rgb888;
+    hal.read_rgb888 = s_shadow ? hal_read_rgb888 : NULL;
     return &hal;
 }

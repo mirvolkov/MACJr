@@ -22,6 +22,8 @@
  * doesn't get to one within a second, where it stands. Its descriptors
  * are closed and it is unloaded either way.
  *
+ * F and ↑↓ pressed together save a screenshot to SHOTS/ on the SD card.
+ *
  * While the system monitor (F and K together) is open it owns the screen: sys_getkey()
  * waits until it closes, so a program that draws after a key press never
  * paints over it.

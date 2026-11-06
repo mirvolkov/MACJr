@@ -64,3 +64,6 @@ warning.
 
 **Result:** a list window any console app can use, and a program that
 finds the networks around and keeps the one it joined.
+
+*Later:* the bar got arrows, a checkered track and a one-cell thumb
+([story 18](18-screenshots-and-glyphs.md)).

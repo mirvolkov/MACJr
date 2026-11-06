@@ -10,8 +10,8 @@
 extern "C" {
 #endif
 
-/* Programs the menu shows, picked with the MK-52 digit keys 1-9. */
-#define BOOT_MAX_ENTRIES 9
+/* Programs the menu shows, picked with the MK-52 digit keys 1-9, then 0. */
+#define BOOT_MAX_ENTRIES 10
 
 /* A program built into the firmware (development: no SD card round trip). */
 typedef struct {

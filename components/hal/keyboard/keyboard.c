@@ -103,6 +103,7 @@ typedef struct {
 static const kbd_chord_t s_chords[] = {
     { KEY_MK_F, KEY_MK_K, KEY_MK_F_K },
     { KEY_MK_F, KEY_ESC, KEY_MK_F_ESC },
+    { KEY_MK_F, KEY_MK_UPDOWN, KEY_MK_F_UPDOWN },
 };
 
 typedef struct {

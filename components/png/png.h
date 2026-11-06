@@ -27,6 +27,11 @@ typedef void (*png_row_cb_t)(void *ctx, uint32_t y, const uint8_t *rgb);
  * for a damaged file. */
 esp_err_t png_decode_file(const char *path, png_header_cb_t on_header, png_row_cb_t on_row, void *ctx);
 
+/* Write `rgb` (width * height pixels of R, G, B, rows packed) as an
+ * uncompressed PNG file at `path`. ESP_ERR_NOT_FOUND if the file can't be
+ * created, ESP_FAIL if writing failed (the file is removed). */
+esp_err_t png_write_file(const char *path, uint32_t width, uint32_t height, const uint8_t *rgb);
+
 #ifdef __cplusplus
 }
 #endif

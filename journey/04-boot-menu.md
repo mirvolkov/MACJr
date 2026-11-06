@@ -66,3 +66,6 @@ syncing to the panel's own refresh (its TE pin) would hide it completely.
 
 **Result:** a menu on every start, with a green title and white options,
 and keys that now use the MK-52 names (`KEY_MK_1`, `KEY_MK_2`).
+
+*Later:* the menu takes ten programs, the tenth on key 0
+([story 18](18-screenshots-and-glyphs.md)).

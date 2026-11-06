@@ -174,8 +174,13 @@ static void run_monitor(int fd) {
       next = xTaskGetTickCount() + pdMS_TO_TICKS(REFRESH_MS);
     }
     uint8_t key;
-    if (read(fd, &key, 1) == 1 && key == MONITOR_KEY) {
-      break;
+    if (read(fd, &key, 1) == 1) {
+      if (key == MONITOR_KEY) {
+        break;
+      }
+      if (key == SCREENSHOT_KEY) {
+        screenshot_save(s_tty);
+      }
     }
     vTaskDelay(pdMS_TO_TICKS(POLL_MS));
   }
@@ -212,8 +217,13 @@ static void monitor_task(void *arg) {
   }
   for (;;) {
     uint8_t key;
-    if (read(fd, &key, 1) == 1 && key == MONITOR_KEY && s_enabled) { /* blocks */
+    if (read(fd, &key, 1) != 1) { /* blocks */
+      continue;
+    }
+    if (key == MONITOR_KEY && s_enabled) {
       run_monitor(fd);
+    } else if (key == SCREENSHOT_KEY) {
+      screenshot_save(s_tty);
     }
   }
 }

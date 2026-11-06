@@ -20,10 +20,11 @@ extern "C" {
  * Two exceptions to "one byte per key, on press":
  *  - Cx is sent as KEY_ESC (ASCII 27). Every program treats it as "back":
  *    leave the current screen, or end the program.
- *  - Keys that start a chord (F, K, Cx) are sent when released, unless
+ *  - Keys that start a chord (F, K, Cx, ↑↓) are sent when released, unless
  *    a partner is pressed while they are held: then the chord's own code
- *    is sent instead of either key (KEY_MK_F_K, KEY_MK_F_ESC). Another key
- *    pressed while one is held sends the held key first. */
+ *    is sent instead of either key (KEY_MK_F_K, KEY_MK_F_ESC,
+ *    KEY_MK_F_UPDOWN). Another key pressed while one is held sends the
+ *    held key first. */
 #define KBD_DEV_PATH "/dev/kbrd"
 
 /* Raw key codes, not yet mapped to ASCII: the 32 keys are numbered
@@ -89,6 +90,10 @@ extern "C" {
 /* Chords: two keys held together. */
 #define KEY_MK_F_K      160 /* F and K: system monitor */
 #define KEY_MK_F_ESC    161 /* F and Cx: kill the running program */
+#define KEY_MK_F_UPDOWN 162 /* F and ↑↓: screenshot */
+
+/* Chords belong to the system: programs get them too, and skip them. */
+#define KBD_IS_CHORD(code) ((code) >= KEY_MK_F_K)
 
 /* Bring up the I2C bus and the MCP23018 expander, register KBD_DEV_PATH and
  * start the matrix scan task. Call once at startup. */

@@ -15,12 +15,20 @@ extern "C" {
  * (a chord, see keyboard.h). */
 #define MONITOR_KEY KEY_MK_F_K
 
+/* Key that saves a screenshot: MK-52 F and ↑↓ pressed together. Works at
+ * any time, on any screen, the monitor's too. */
+#define SCREENSHOT_KEY KEY_MK_F_UPDOWN
+
 /* Start the monitor task. From then on MONITOR_KEY, pressed at any time,
  * saves the screen of `tty` and shows CPU load per core, internal RAM and
  * PSRAM usage, chip temperature and SD card status, refreshed every second.
  * Pressing it again restores the saved screen. Call after keyboard_init()
  * and once `tty` exists. */
 esp_err_t monitor_start(macjr_tty_t *tty);
+
+/* Save what the panel shows as SHOTS/SHOTnnnn.PNG on the SD card; the
+ * outcome goes to the log. SCREENSHOT_KEY does this. */
+void screenshot_save(macjr_tty_t *tty);
 
 /* Switch MONITOR_KEY handling off (for an app that needs that key itself)
  * or back on. On by default. */

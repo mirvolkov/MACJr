@@ -2,10 +2,11 @@
  * Scrollable list window for console apps: a column of items with a
  * DOS-style scroll bar on its right edge, one item selected.
  *
- *   first item    ░     the thumb (█) shows which part of the
- *   second item   █     list is on screen; the selected item is
- *   selected item █     drawn white on blue
- *   fourth item   ░
+ *   first item    ▲     arrows at both ends, a checkered track and a
+ *   second item   ▒     one-cell thumb (■) that follows the selection
+ *   selected item ■     through the list; the selected item is drawn
+ *   fourth item   ▒     white on blue
+ *   fifth item    ▼
  *
  * The app owns the items; the list asks for an item's text by index when
  * it draws, so a list can be longer than the window. Moving the selection

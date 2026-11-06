@@ -367,9 +367,10 @@ void macjr_vc_write(macjr_vc_t *vc, const char *buf, size_t len, uint32_t *row_d
       continue;
     }
 
-    /* Printable glyph (ASCII 32-126, or 128-255 from the pseudographics
-     * page); 127 (DEL) is intentionally not rendered. */
-    if (c >= 32 && c != 127) {
+    /* Printable glyph (ASCII 32-126, 128-255 from the pseudographics
+     * page, or the arrows at 30 and 31); 127 (DEL) is intentionally not
+     * rendered. */
+    if (c >= 30 && c != 127) {
       putc_at_cursor(vc, row_dirty, c);
       advance_cursor(vc, row_dirty);
     }

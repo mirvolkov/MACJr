@@ -31,6 +31,10 @@ struct macjr_hal_display {
   /* Optional: draw a w x h true-color image, 3 bytes per pixel (R, G, B),
    * rows packed (w * 3 bytes each). NULL if the panel can't do it. */
   void (*blit_rgb888)(macjr_hal_display_t *d, int x, int y, int w, int h, const uint8_t *rgb);
+
+  /* Optional: copy what the panel shows into `rgb`, width_px * height_px
+   * pixels of 3 bytes (R, G, B). NULL if the panel can't do it. */
+  void (*read_rgb888)(macjr_hal_display_t *d, uint8_t *rgb);
 };
 
 #endif

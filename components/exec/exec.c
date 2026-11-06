@@ -247,7 +247,7 @@ int sys_getkey(void) {
       delay_ticks(pdMS_TO_TICKS(100));
       continue;
     }
-    if (!monitor_is_open() && code != MONITOR_KEY) {
+    if (!monitor_is_open() && !KBD_IS_CHORD(code)) {
       return code;
     }
   }

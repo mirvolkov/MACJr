@@ -82,6 +82,11 @@ static bool scan_programs(void) {
   return true;
 }
 
+/* The digit that picks menu entry `i` (0-based). */
+static int entry_digit(int i) {
+  return (i + 1) % 10;
+}
+
 static void draw_menu(macjr_tty_t *tty, bool have_bin) {
   char line[96];
   out(tty, "\x1b[?25l\x1b[0m\x1b[2J");
@@ -89,13 +94,13 @@ static void draw_menu(macjr_tty_t *tty, bool have_bin) {
   macjr_tty_header(tty, line);
 
   for (int i = 0; i < s_n_builtins; i++) {
-    snprintf(line, sizeof(line), "\x1b[%d;1H\x1b[96m %d - %s", FIRST_ROW + i, i + 1, s_builtins[i].name);
+    snprintf(line, sizeof(line), "\x1b[%d;1H\x1b[96m %d - %s", FIRST_ROW + i, entry_digit(i), s_builtins[i].name);
     out(tty, line);
   }
   out(tty, "\x1b[97m");
   for (int i = 0; i < s_count; i++) {
     int entry = s_n_builtins + i;
-    snprintf(line, sizeof(line), "\x1b[%d;1H %d - %s", FIRST_ROW + entry, entry + 1, s_names[i]);
+    snprintf(line, sizeof(line), "\x1b[%d;1H %d - %s", FIRST_ROW + entry, entry_digit(entry), s_names[i]);
     out(tty, line);
   }
   int total = s_n_builtins + s_count;
@@ -107,7 +112,8 @@ static void draw_menu(macjr_tty_t *tty, bool have_bin) {
   if (total == 0) {
     snprintf(line, sizeof(line), "\x1b[%d;1H\x1b[90m Press any key to look again\x1b[0m", HINT_ROW);
   } else {
-    snprintf(line, sizeof(line), "\x1b[%d;1H\x1b[90m Select: press 1-%d\x1b[0m", HINT_ROW, total);
+    snprintf(line, sizeof(line), "\x1b[%d;1H\x1b[90m Select: press 1-%d%s\x1b[0m", HINT_ROW, total < 10 ? total : 9,
+             total < 10 ? "" : ", 0");
   }
   out(tty, line);
   macjr_display_flush(tty);
@@ -116,7 +122,7 @@ static void draw_menu(macjr_tty_t *tty, bool have_bin) {
 /* Menu entry (0-based) of a digit key, or -1. */
 static int entry_of(uint8_t key) {
   static const uint8_t digits[BOOT_MAX_ENTRIES] = {KEY_MK_1, KEY_MK_2, KEY_MK_3, KEY_MK_4, KEY_MK_5,
-                                                   KEY_MK_6, KEY_MK_7, KEY_MK_8, KEY_MK_9};
+                                                   KEY_MK_6, KEY_MK_7, KEY_MK_8, KEY_MK_9, KEY_MK_0};
   for (int i = 0; i < BOOT_MAX_ENTRIES; i++) {
     if (digits[i] == key) {
       return i;

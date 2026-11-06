@@ -172,7 +172,7 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
 
   for (;;) {
     uint8_t key;
-    if (fd >= 0 && read(fd, &key, 1) == 1 && key != MONITOR_KEY && !monitor_is_open()) {
+    if (fd >= 0 && read(fd, &key, 1) == 1 && !KBD_IS_CHORD(key) && !monitor_is_open()) {
       break;
     }
     if (!monitor_is_open()) { /* the monitor owns the screen while open */

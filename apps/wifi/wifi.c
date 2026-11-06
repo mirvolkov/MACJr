@@ -6,10 +6,10 @@
  * in the next time it is picked. Passwords are digits only for now.
  *
  *   ════════════════ Wi-Fi ═════════════════
- *   home                             *****░
- *   office                           ***··█
- *   cafe                             **···█
- *   ...                                   ░
+ *   home                             *****▲
+ *   office                           ***··■
+ *   cafe                             **···▒
+ *   ...                                   ▼
  *    В↑ join   С/П scan   Cx exit
  *
  * The password window opens over the list:
