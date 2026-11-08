@@ -3,6 +3,7 @@
  * event loop: the handler records the outcome in an event group, which
  * net_wifi_connect() waits on. Wi-Fi doesn't reconnect on its own: a
  * dropped connection stays dropped until the next net_wifi_connect().
+ * The first connection also starts SNTP, which sets the system clock.
  */
 #include "net.h"
 
@@ -13,6 +14,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_netif_sntp.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/semphr.h"
@@ -35,6 +37,7 @@ static bool s_connected;    /* associated, with or without an address */
 static uint8_t s_reason;    /* of the last disconnect */
 static char s_ssid[NET_SSID_MAX + 1];
 static char s_ip[16];
+static bool s_sntp;         /* SNTP started */
 
 static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_CONNECTED) {
@@ -199,6 +202,22 @@ static esp_err_t reason_err(uint8_t reason) {
   }
 }
 
+/* Keep the system clock set over NTP from the first connection on. SNTP
+ * stays running across reconnects and syncs again every hour. Under s_lock. */
+static void start_sntp(void) {
+  if (s_sntp) {
+    return;
+  }
+  esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG(NET_NTP_SERVER);
+  esp_err_t err = esp_netif_sntp_init(&cfg);
+  if (err == ESP_OK) {
+    s_sntp = true;
+    ESP_LOGI(TAG, "SNTP started (%s)", NET_NTP_SERVER);
+  } else {
+    ESP_LOGW(TAG, "SNTP start failed: %s", esp_err_to_name(err));
+  }
+}
+
 esp_err_t net_wifi_connect(const char *ssid, const char *pass, uint32_t timeout_ms) {
   if (!ssid || !*ssid || strlen(ssid) > NET_SSID_MAX || !pass || strlen(pass) > NET_PASS_MAX) {
     return ESP_ERR_INVALID_ARG;
@@ -225,6 +244,7 @@ esp_err_t net_wifi_connect(const char *ssid, const char *pass, uint32_t timeout_
     if (bits & BIT_GOT_IP) {
       snprintf(s_ssid, sizeof(s_ssid), "%s", ssid);
       ESP_LOGI(TAG, "connected to %s, %s", s_ssid, s_ip);
+      start_sntp();
     } else if (bits & BIT_DOWN) {
       err = reason_err(s_reason);
       ESP_LOGW(TAG, "connecting to %s failed: reason %u", ssid, s_reason);

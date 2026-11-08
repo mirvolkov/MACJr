@@ -28,6 +28,7 @@ struct macjr_vc {
 
   int cursor_r;
   int cursor_c;
+  bool wrap_pending; /* a glyph went into the last column: wrap before the next one */
   bool cursor_visible;
 
   uint8_t fg; /* current SGR foreground, applied to newly written cells */

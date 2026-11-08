@@ -5,12 +5,16 @@
 #include "sdcard.h"
 
 #include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "esp_log.h"
 #include "esp_vfs_fat.h"
 #include "driver/sdspi_host.h"
 #include "driver/spi_common.h"
 #include "sdmmc_cmd.h"
+#include "diskio_sdmmc.h"
+#include "ff.h"
 
 static const char *TAG = "sdcard";
 
@@ -148,4 +152,24 @@ void sdcard_deinit(void)
     spi_bus_free(SD_HOST);
     s_card = NULL;
     ESP_LOGI(TAG, "Card unmounted");
+}
+
+bool sdcard_is_hidden(const char *path)
+{
+    size_t root = strlen(SDCARD_MOUNT_POINT);
+    if (!s_card || strncmp(path, SDCARD_MOUNT_POINT, root) != 0) {
+        return false;
+    }
+    BYTE pdrv = ff_diskio_get_pdrv_card(s_card);
+    if (pdrv == 0xFF) {
+        return false;
+    }
+    /* FatFs names the volume by its drive number: "0:/BIN/HELLO.ELF" */
+    char fat_path[FF_MAX_LFN + 16];
+    snprintf(fat_path, sizeof(fat_path), "%u:%s", pdrv, path[root] ? path + root : "/");
+    FILINFO info;
+    if (f_stat(fat_path, &info) != FR_OK) {
+        return false;
+    }
+    return (info.fattrib & (AM_HID | AM_SYS)) != 0;
 }

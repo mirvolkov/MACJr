@@ -84,6 +84,7 @@ void macjr_vc_clear_screen(macjr_vc_t *vc) {
   }
   vc->cursor_r = 0;
   vc->cursor_c = 0;
+  vc->wrap_pending = false;
 }
 
 void macjr_vc_mark_all_dirty(macjr_vc_t *vc) {
@@ -101,17 +102,30 @@ static void putc_at_cursor(macjr_vc_t *vc, uint32_t *row_dirty, uint16_t ch) {
   set_row_dirty(vc, row_dirty, vc->cursor_r);
 }
 
-/* Move the cursor right one cell, wrapping to the next row (and scrolling
- * if that was the last row) like a terminal does after printing a glyph. */
+/* Move the cursor right one cell after printing a glyph. In the last
+ * column it stays and the wrap is only noted, as on a VT100: the next
+ * glyph goes to the next row (scrolling from the last one), while a cursor
+ * move or a control code cancels it. So a full-width last row can be
+ * drawn without scrolling the screen. */
 static void advance_cursor(macjr_vc_t *vc, uint32_t *row_dirty) {
-  vc->cursor_c++;
-  if (vc->cursor_c >= vc->cols) {
-    vc->cursor_c = 0;
-    vc->cursor_r++;
-    if (vc->cursor_r >= vc->rows) {
-      vc->cursor_r = vc->rows - 1;
-      scroll_up(vc, row_dirty);
-    }
+  (void)row_dirty;
+  if (vc->cursor_c < vc->cols - 1) {
+    vc->cursor_c++;
+  } else {
+    vc->wrap_pending = true;
+  }
+}
+
+static void wrap_if_pending(macjr_vc_t *vc, uint32_t *row_dirty) {
+  if (!vc->wrap_pending) {
+    return;
+  }
+  vc->wrap_pending = false;
+  vc->cursor_c = 0;
+  vc->cursor_r++;
+  if (vc->cursor_r >= vc->rows) {
+    vc->cursor_r = vc->rows - 1;
+    scroll_up(vc, row_dirty);
   }
 }
 
@@ -176,6 +190,9 @@ static void apply_sgr(macjr_vc_t *vc) {
 /* Execute one fully-parsed CSI sequence once its final byte (`cmd`) has been
  * read; vc->ansi_param[] holds the sequence's numeric arguments. */
 static void csi_dispatch(macjr_vc_t *vc, uint8_t cmd, uint32_t *row_dirty) {
+  if (cmd != 'm') {
+    vc->wrap_pending = false; /* colors keep a pending wrap, the rest cancel it */
+  }
   switch (cmd) {
     case 'm':
       apply_sgr(vc);
@@ -338,6 +355,9 @@ void macjr_vc_write(macjr_vc_t *vc, const char *buf, size_t len, uint32_t *row_d
       continue;
     }
 
+    if (c == '\r' || c == '\n' || c == '\b' || c == '\t') {
+      vc->wrap_pending = false;
+    }
     if (c == '\r') {
       vc->cursor_c = 0;
       continue;
@@ -371,6 +391,7 @@ void macjr_vc_write(macjr_vc_t *vc, const char *buf, size_t len, uint32_t *row_d
      * page, or the arrows at 30 and 31); 127 (DEL) is intentionally not
      * rendered. */
     if (c >= 30 && c != 127) {
+      wrap_if_pending(vc, row_dirty);
       putc_at_cursor(vc, row_dirty, c);
       advance_cursor(vc, row_dirty);
     }

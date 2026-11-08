@@ -5,7 +5,7 @@
  *   first item    ▲     arrows at both ends, a checkered track and a
  *   second item   ▒     one-cell thumb (■) that follows the selection
  *   selected item ■     through the list; the selected item is drawn
- *   fourth item   ▒     white on blue
+ *   fourth item   ▒     black on cyan, as in DOS Navigator
  *   fifth item    ▼
  *
  * The app owns the items; the list asks for an item's text by index when
@@ -24,8 +24,11 @@
 extern "C" {
 #endif
 
-/* Write the text of item `index` into `text` (`len` bytes, plain CP866,
- * no escapes). The list cuts it to the window and pads it. */
+/* Write the text of item `index` into `text` (`len` bytes, CP866). It may
+ * hold SGR color escapes ("\x1b[96m"), which take no room; set only the
+ * foreground, so the row keeps its background. The selected row drops
+ * them and is drawn in the selection colors. The list cuts the text to
+ * the window and pads it. */
 typedef void (*macjr_tty_list_item_t)(int index, char *text, size_t len, void *ctx);
 
 typedef struct {

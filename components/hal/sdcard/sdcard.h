@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include <stdbool.h>
+
 #include "esp_err.h"
 #include "sdmmc_cmd.h"
 
@@ -36,6 +38,11 @@ esp_err_t sdcard_close_raw(void);
 
 /* Unmount the card and free the SPI bus. */
 void sdcard_deinit(void);
+
+/* True if `path` (under SDCARD_MOUNT_POINT) has the FAT hidden or system
+ * attribute, like "System Volume Information". False when it can't be
+ * read. */
+bool sdcard_is_hidden(const char *path);
 
 #ifdef __cplusplus
 }

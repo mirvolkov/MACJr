@@ -26,8 +26,10 @@ uint16_t c = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 return (uint16_t)((c << 8) | (c >> 8));
 ```
 
-The menu now lists built-in programs first, in cyan, then `/BIN/*.ELF`,
-sorted, with `_` shown as a space. It holds ten entries, the tenth on key 0.
+The menu listed built-in programs first, in cyan, then `/BIN/*.ELF`,
+sorted, with `_` shown as a space. Digit keys picked them, so it held ten
+entries at most, the tenth on key 0, until it gave way to a
+[navigator](#from-a-menu-to-a-navigator).
 
 ## Drawing while sending
 
@@ -110,6 +112,56 @@ same columns as `║` (1-2 and 5-6), they join their neighbours exactly:
 .##..##..........##..##.
 ```
 
-**Result:** a double-buffered driver, a console with colours, a CP866 font
-with arrows and correct boxes, a list window, and a monitor that works on top
-of any screen.
+## From a menu to a navigator
+
+The boot menu ran out of digit keys, and the card had more on it than
+programs. So it became a file navigator in the style of DOS Navigator: one
+panel over the SD card, with no command line, menus or function-key bar.
+
+```
+╔═[home]══════════[/BIN]════════[14:05]═╗
+║..                                    ▲
+║HELLO                       ELF  3.1 KB▒
+║MK52                        ELF   14 KB■
+║layout                      PNG   86 KB▒
+╚══════════════════════════════════════╝
+```
+
+П→x and x→П move, В↑ opens a directory or starts an ELF, and Cx goes up a
+directory. Directories come first, and colour shows the type: directories
+white, programs cyan, images yellow, sounds purple, everything else grey.
+The selection is black on cyan, as in DN. For the colours, the list window
+learned to take colour escapes inside an item's text. They take no room, and
+the selected row drops them, so the highlight bar stays even.
+
+Hidden files needed FatFs itself, because the VFS `stat()` carries no
+attributes. `sdcard_is_hidden()` asks `f_stat()` for the hidden and system
+flags, and "System Volume Information" disappears from the list.
+
+The header sits in the top edge: the path always, the Wi-Fi network while
+connected, and the time once it is known, with a colon that blinks every
+second. A clock needs a network, so the firmware now joins the network the
+WIFI program saved, at boot and again every 30 s while it is disconnected.
+The first connection starts SNTP. The time zone comes from the db key
+`time.tz`, Kyiv by default.
+
+The navigator also remembers where it was: the directory in `nav.dir`,
+saved when it changes, and the program last started from it in `nav.file`.
+After a reboot it opens there, on that entry.
+
+### One row too many
+
+The first header vanished as soon as the panel was drawn. The bottom edge
+fills all 40 cells of the last row, and the console wrapped the cursor the
+moment a glyph landed in the last column. On the last row that wrap scrolled
+the whole screen up a line and pushed the header off the top.
+
+Real terminals don't do that. A VT100 prints in the last column and only
+notes that a wrap is due; the next glyph wraps first. The console does the
+same now. A cursor move or a control code cancels the pending wrap, and a
+colour change keeps it, so coloured text still runs on to the next row.
+
+**Result:** a double-buffered driver, a console with colours that wraps
+like a terminal, a CP866 font with arrows and correct boxes, a list window,
+a monitor that works on top of any screen, and a navigator to start
+programs from.

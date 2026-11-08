@@ -19,12 +19,18 @@ extern "C" {
  * stays on, connected or not, until power off. Calls are thread-safe and
  * block; the Wi-Fi tasks run on CPU0.
  *
+ * The first successful connection also starts SNTP (NET_NTP_SERVER), which
+ * sets the system clock and keeps it in sync; time() is meaningful once
+ * it has synced. The time zone is the TZ environment variable.
+ *
  * Credentials are not stored here: Wi-Fi keeps its configuration in RAM
  * only, and saving a network is up to the caller (the WIFI program keeps
  * NET_DB_KEY_SSID / NET_DB_KEY_PASS in the db).
  */
 #define NET_SSID_MAX 32 /* bytes, without the terminator */
 #define NET_PASS_MAX 64
+
+#define NET_NTP_SERVER "pool.ntp.org"
 
 #define NET_DB_KEY_SSID "wifi.ssid"
 #define NET_DB_KEY_PASS "wifi.pass"

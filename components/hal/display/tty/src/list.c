@@ -14,7 +14,7 @@
 #define COLOR_BAR_CELL  "\x1b[0;30;107m" /* arrows and thumb: black on white */
 #define COLOR_BAR_TRACK "\x1b[0;97;40m"
 #define COLOR_ITEM   "\x1b[0;37m"
-#define COLOR_SELECT "\x1b[0;97;44m"
+#define COLOR_SELECT "\x1b[0;30;46m" /* black on cyan, as in DOS Navigator */
 
 #define ITEM_MAX 128 /* widest item text, in bytes */
 
@@ -98,13 +98,41 @@ static int bar_cell(const macjr_tty_list_t *list, int y, char *out, size_t len) 
   return snprintf(out, len, COLOR_BAR_TRACK "%c", BAR_TRACK);
 }
 
+/* Copy item text to `out`, cut and padded to `width` cells. SGR escapes
+ * (ESC [ ... final byte) take no cell; they are kept only if `colors`.
+ * The number of bytes written. */
+static int put_text(char *out, const char *text, int width, bool colors) {
+  int n = 0, cells = 0;
+  for (const char *p = text; *p && cells < width;) {
+    if (p[0] == '\x1b' && p[1] == '[') {
+      const char *q = p + 2;
+      while (*q && !(*q >= 0x40 && *q <= 0x7E)) {
+        q++;
+      }
+      if (*q) {
+        q++; /* the final byte */
+      }
+      if (colors) {
+        memcpy(out + n, p, q - p);
+        n += q - p;
+      }
+      p = q;
+      continue;
+    }
+    out[n++] = *p++;
+    cells++;
+  }
+  memset(out + n, ' ', width - cells);
+  return n + width - cells;
+}
+
 void macjr_tty_list_draw(macjr_tty_t *tty, const macjr_tty_list_t *list) {
   int text_w = list->width - 1;
   if (text_w > ITEM_MAX - 1) {
     text_w = ITEM_MAX - 1;
   }
   for (int y = 0; y < list->height; y++) {
-    char buf[ITEM_MAX + 48];
+    char buf[2 * ITEM_MAX + 48]; /* escapes, then padding up to text_w */
     int i = list->top + y;
     int n = snprintf(buf, sizeof(buf), "\x1b[%d;%dH%s", list->row + y, list->col,
                      i == list->sel ? COLOR_SELECT : COLOR_ITEM);
@@ -112,10 +140,7 @@ void macjr_tty_list_draw(macjr_tty_t *tty, const macjr_tty_list_t *list) {
     if (i < list->count) {
       list->item(i, text, sizeof(text), list->ctx);
     }
-    int len = (int)strnlen(text, text_w);
-    memcpy(buf + n, text, len);
-    memset(buf + n + len, ' ', text_w - len);
-    n += text_w;
+    n += put_text(buf + n, text, text_w, i != list->sel);
     n += bar_cell(list, y, buf + n, sizeof(buf) - n);
     macjr_tty_write(tty, buf, n);
   }

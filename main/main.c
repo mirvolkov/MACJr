@@ -1,18 +1,22 @@
 /*
  * Firmware entry point: brings up the board HALs (SD card, keyboard, IR
- * receiver, ST7789 display), starts the system monitor (keys F+K), then loops over the boot
- * menu (components/boot) and the program picked there: one from /BIN on
- * the SD card, loaded and run by components/exec (apps/: IDE demo, MK-52
- * calculator, SoftRock SDR radio, USB drive, port layout picture, remote
- * control, Wi-Fi, hello). A program can also be built into the firmware
- * while it is developed: pass it to boot_select() as a boot_builtin_t.
- * Cx goes back to the menu when a program ends; F and Cx together kill a
- * program, which is how to leave those that never return (radio, USB
- * drive, MK-52).
+ * receiver, ST7789 display), sets the time zone, keeps the Wi-Fi network
+ * saved by the WIFI program joined in the background (the clock is then
+ * set over NTP), starts the system monitor (keys F+K), then loops over the
+ * file navigator (components/boot) and the program picked there: an ELF
+ * file on the SD card, loaded and run by components/exec (apps/: IDE demo,
+ * MK-52 calculator, SoftRock SDR radio, USB drive, port layout picture,
+ * remote control, Wi-Fi, mixer, hello). A program can also be built into
+ * the firmware while it is developed: pass it to boot_select() as a
+ * boot_builtin_t. Cx goes back to the navigator when a program ends; F and
+ * Cx together kill a program, which is how to leave those that never
+ * return (radio, USB drive, MK-52).
  */
 #include <errno.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "esp_log.h"
@@ -31,6 +35,7 @@
 #include "exec.h"
 #include "ir_rx.h"
 #include "ir_tx.h"
+#include "net.h"
 
 static const char *TAG = "MACJR";
 
@@ -62,6 +67,43 @@ static void kbrd_task(void *arg) {
   }
 }
 
+/* Time zone: the db key TIME_DB_KEY_TZ (a POSIX TZ string), else Kyiv. */
+#define TIME_DB_KEY_TZ "time.tz"
+#define TIME_TZ_DEFAULT "EET-2EEST,M3.5.0/3,M10.5.0/4"
+
+static void set_time_zone(void) {
+  char tz[64];
+  if (db_read(TIME_DB_KEY_TZ, tz, sizeof(tz)) != ESP_OK || !tz[0]) {
+    strcpy(tz, TIME_TZ_DEFAULT);
+  }
+  setenv("TZ", tz, 1);
+  tzset();
+  ESP_LOGI(TAG, "time zone %s", tz);
+}
+
+#define WIFI_CONNECT_MS 15000
+#define WIFI_RETRY_MS   30000
+
+/* Keep the network the WIFI program saved joined: try at boot, then
+ * every WIFI_RETRY_MS while not connected (the network may come up later,
+ * or drop). Only while disconnected, so a connection made by a program is
+ * left alone. The saved network is read again each time. */
+static void wifi_task(void *arg) {
+  for (;;) {
+    char ssid[NET_SSID_MAX + 1], pass[NET_PASS_MAX + 1];
+    if (!net_wifi_status(NULL, NULL) && db_read(NET_DB_KEY_SSID, ssid, sizeof(ssid)) == ESP_OK && ssid[0]) {
+      if (db_read(NET_DB_KEY_PASS, pass, sizeof(pass)) != ESP_OK) {
+        pass[0] = '\0';
+      }
+      esp_err_t err = net_wifi_connect(ssid, pass, WIFI_CONNECT_MS);
+      if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Wi-Fi %s: %s, again in %d s", ssid, esp_err_to_name(err), WIFI_RETRY_MS / 1000);
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(WIFI_RETRY_MS));
+  }
+}
+
 static void start_monitor(macjr_tty_t *tty) {
   if (monitor_start(tty) != ESP_OK) {
     ESP_LOGW(TAG, "monitor_start failed");
@@ -74,6 +116,9 @@ void app_main(void) {
   } else if (db_init() != ESP_OK) {
     ESP_LOGW(TAG, "db_init failed, continuing without config");
   }
+
+  set_time_zone();
+  xTaskCreatePinnedToCore(wifi_task, "wifi_join", 4096, NULL, 2, NULL, 0);
 
   if (speaker_init() != ESP_OK) {
     ESP_LOGW(TAG, "speaker_init failed, continuing without sound");
