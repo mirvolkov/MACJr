@@ -3,5 +3,5 @@
 idf_component_register(
   SRCS "wav.c" "speaker.c"
   INCLUDE_DIRS "."
-  REQUIRES esp_driver_i2s esp_driver_gpio freertos
+  REQUIRES esp_driver_i2s esp_driver_gpio freertos db
 )

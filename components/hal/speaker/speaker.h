@@ -3,6 +3,7 @@
 
 #include "esp_err.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -46,8 +47,42 @@ void speaker_deinit(void);
 /* Queue a sine beep of `hz` for about `ms` (whole periods, so it starts
  * and ends at zero: no click), at a quiet fixed level. Returns at once;
  * the tone is generated at the current sample rate into its own buffer,
- * freed once played. */
+ * freed once played. Plays on SPEAKER_CH_BEEP. */
 esp_err_t speaker_beep(uint32_t hz, uint32_t ms);
+
+/*
+ * Mixer. Every sound plays on one channel, PCM (speaker_write(), WAV
+ * files) or Beep (speaker_beep(): key clicks), and goes through Master
+ * after it. Each channel has a volume of 0..100 % and a mute switch,
+ * applied by the speaker task as it plays, so a change is heard at once.
+ * The gain follows the square of the volume, so 50 % is about -12 dB and
+ * the steps sound roughly even. speaker_init() loads the saved settings
+ * from the db (SPEAKER_DB_PREFIX + lower-case channel name, "80" or
+ * "80 mute"); everything starts at 100 % without them.
+ */
+typedef enum {
+  SPEAKER_CH_MASTER,
+  SPEAKER_CH_PCM,
+  SPEAKER_CH_BEEP,
+  SPEAKER_CH_COUNT,
+} speaker_channel_t;
+
+#define SPEAKER_VOLUME_MAX 100
+#define SPEAKER_DB_PREFIX "speaker."
+
+/* "Master", "PCM", "Beep"; NULL for a channel that doesn't exist. */
+const char *speaker_channel_name(speaker_channel_t ch);
+
+/* Set the volume of `ch`, clamped to 0..SPEAKER_VOLUME_MAX. */
+void speaker_set_volume(speaker_channel_t ch, int volume);
+int speaker_volume(speaker_channel_t ch);
+
+void speaker_set_mute(speaker_channel_t ch, bool mute);
+bool speaker_muted(speaker_channel_t ch);
+
+/* Store the volume and mute of `ch` in the db, to be loaded at the next
+ * boot. ESP_ERR_INVALID_STATE without the db (no SD card). */
+esp_err_t speaker_save_volume(speaker_channel_t ch);
 
 #ifdef __cplusplus
 }

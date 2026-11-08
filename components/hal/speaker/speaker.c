@@ -1,12 +1,18 @@
 /*
  * I2S TX HAL: a background task owns the channel and drains a small queue
  * of speaker_write() requests, so callers get a completion callback instead
- * of blocking on i2s_channel_write() themselves.
+ * of blocking on i2s_channel_write() themselves. The MAX98357A has no
+ * volume control of its own, so the task scales the samples by the mixer
+ * gains (Master x the request's channel) as it plays them.
  */
 #include "speaker.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+#include "db.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -20,7 +26,9 @@
 #define REQUEST_QUEUE_LEN 4
 #define TASK_STACK_SIZE 4096
 #define TASK_PRIORITY 5
-#define BEEP_AMPLITUDE 800 /* of 32767: about 2.4 %, a quiet click */
+#define BEEP_AMPLITUDE 8000 /* of 32767: about 2.4 %, a quiet click */
+#define GAIN_UNITY 32768   /* Q15 */
+#define SCALE_CHUNK 256    /* samples scaled per i2s_channel_write() */
 
 static const char *TAG = "speaker_hal";
 
@@ -28,9 +36,17 @@ typedef struct {
   const int16_t *samples; /* NULL marks the stop sentinel (or a rate change) */
   uint32_t sample_rate;   /* nonzero: switch the clock to this rate, no samples */
   size_t sample_count;
+  speaker_channel_t channel;
   speaker_write_cb_t cb;
   void *ctx;
 } speaker_request_t;
+
+static const char *const s_ch_names[SPEAKER_CH_COUNT] = {"Master", "PCM", "Beep"};
+static const char *const s_ch_keys[SPEAKER_CH_COUNT] = {
+    SPEAKER_DB_PREFIX "master", SPEAKER_DB_PREFIX "pcm", SPEAKER_DB_PREFIX "beep"};
+static volatile uint8_t s_volume[SPEAKER_CH_COUNT] = {SPEAKER_VOLUME_MAX, SPEAKER_VOLUME_MAX, SPEAKER_VOLUME_MAX};
+static volatile bool s_mute[SPEAKER_CH_COUNT];
+static int16_t s_scaled[SCALE_CHUNK]; /* speaker task only */
 
 static i2s_chan_handle_t s_tx_handle;
 static QueueHandle_t s_request_q;
@@ -53,6 +69,55 @@ static esp_err_t apply_sample_rate(uint32_t hz) {
   return ret;
 }
 
+/* Q15 gain of one channel: the square of its volume, 0 when muted. */
+static int32_t channel_gain(speaker_channel_t ch) {
+  if (s_mute[ch]) {
+    return 0;
+  }
+  int32_t v = s_volume[ch];
+  return v * v * GAIN_UNITY / (SPEAKER_VOLUME_MAX * SPEAKER_VOLUME_MAX);
+}
+
+static esp_err_t write_all(const void *data, size_t bytes) {
+  const uint8_t *p = data;
+  while (bytes > 0) {
+    size_t written = 0;
+    esp_err_t ret = i2s_channel_write(s_tx_handle, p, bytes, &written, portMAX_DELAY);
+    if (ret != ESP_OK) {
+      return ret;
+    }
+    p += written;
+    bytes -= written;
+  }
+  return ESP_OK;
+}
+
+/* Play a request in chunks, each scaled by the gains of that moment, so a
+ * volume change is heard within a chunk. Muted audio is still written (as
+ * silence) to keep the timing callers rely on. */
+static esp_err_t play(const speaker_request_t *req) {
+  const int16_t *src = req->samples;
+  size_t left = req->sample_count;
+  while (left > 0) {
+    size_t n = left < SCALE_CHUNK ? left : SCALE_CHUNK;
+    int32_t gain = (channel_gain(SPEAKER_CH_MASTER) * channel_gain(req->channel)) >> 15;
+    const int16_t *out = src;
+    if (gain != GAIN_UNITY) {
+      for (size_t i = 0; i < n; i++) {
+        s_scaled[i] = (int16_t)((src[i] * gain) >> 15);
+      }
+      out = s_scaled;
+    }
+    esp_err_t ret = write_all(out, n * sizeof(int16_t));
+    if (ret != ESP_OK) {
+      return ret;
+    }
+    src += n;
+    left -= n;
+  }
+  return ESP_OK;
+}
+
 static void speaker_task(void *arg) {
   (void)arg;
   for (;;) {
@@ -71,25 +136,26 @@ static void speaker_task(void *arg) {
       break; /* stop sentinel */
     }
 
-    const uint8_t *bytes = (const uint8_t *)req.samples;
-    size_t remaining = req.sample_count * sizeof(int16_t);
-    esp_err_t ret = ESP_OK;
-    while (remaining > 0) {
-      size_t written = 0;
-      ret = i2s_channel_write(s_tx_handle, bytes, remaining, &written, portMAX_DELAY);
-      if (ret != ESP_OK) {
-        break;
-      }
-      bytes += written;
-      remaining -= written;
-    }
-
+    esp_err_t ret = play(&req);
     if (req.cb) {
       req.cb(req.ctx, ret);
     }
   }
   xSemaphoreGive(s_stopped_sem);
   vTaskDelete(NULL);
+}
+
+/* Saved mixer settings from the db; a channel without one keeps 100 %. */
+static void load_volumes(void) {
+  for (int ch = 0; ch < SPEAKER_CH_COUNT; ch++) {
+    char value[16];
+    if (db_read(s_ch_keys[ch], value, sizeof(value)) != ESP_OK) {
+      continue;
+    }
+    speaker_set_volume(ch, atoi(value));
+    s_mute[ch] = strstr(value, "mute") != NULL;
+    ESP_LOGI(TAG, "%s %d%s", s_ch_names[ch], s_volume[ch], s_mute[ch] ? " (muted)" : "");
+  }
 }
 
 esp_err_t speaker_init(void) {
@@ -148,6 +214,7 @@ esp_err_t speaker_init(void) {
     goto fail_queue;
   }
 
+  load_volumes();
   return ESP_OK;
 
 fail_queue:
@@ -176,6 +243,7 @@ esp_err_t speaker_write(const int16_t *samples, size_t sample_count, speaker_wri
   speaker_request_t req = {
       .samples = samples,
       .sample_count = sample_count,
+      .channel = SPEAKER_CH_PCM,
       .cb = on_complete,
       .ctx = ctx,
   };
@@ -254,9 +322,60 @@ esp_err_t speaker_beep(uint32_t hz, uint32_t ms) {
   for (size_t i = 0; i < n; i++) {
     tone[i] = (int16_t)(BEEP_AMPLITUDE * sinf(2.0f * (float)M_PI * hz * i / rate));
   }
-  esp_err_t ret = speaker_write(tone, n, beep_done, tone);
-  if (ret != ESP_OK) {
+  speaker_request_t req = {
+      .samples = tone,
+      .sample_count = n,
+      .channel = SPEAKER_CH_BEEP,
+      .cb = beep_done,
+      .ctx = tone,
+  };
+  if (xQueueSend(s_request_q, &req, 0) != pdTRUE) {
     free(tone);
+    return ESP_ERR_NO_MEM;
+  }
+  return ESP_OK;
+}
+
+/* ---- mixer ------------------------------------------------------------- */
+
+static bool channel_valid(speaker_channel_t ch) {
+  return (unsigned)ch < SPEAKER_CH_COUNT;
+}
+
+const char *speaker_channel_name(speaker_channel_t ch) {
+  return channel_valid(ch) ? s_ch_names[ch] : NULL;
+}
+
+void speaker_set_volume(speaker_channel_t ch, int volume) {
+  if (!channel_valid(ch)) {
+    return;
+  }
+  s_volume[ch] = (uint8_t)(volume < 0 ? 0 : volume > SPEAKER_VOLUME_MAX ? SPEAKER_VOLUME_MAX : volume);
+}
+
+int speaker_volume(speaker_channel_t ch) {
+  return channel_valid(ch) ? s_volume[ch] : 0;
+}
+
+void speaker_set_mute(speaker_channel_t ch, bool mute) {
+  if (channel_valid(ch)) {
+    s_mute[ch] = mute;
+  }
+}
+
+bool speaker_muted(speaker_channel_t ch) {
+  return channel_valid(ch) && s_mute[ch];
+}
+
+esp_err_t speaker_save_volume(speaker_channel_t ch) {
+  if (!channel_valid(ch)) {
+    return ESP_ERR_INVALID_ARG;
+  }
+  char value[16];
+  snprintf(value, sizeof(value), "%d%s", s_volume[ch], s_mute[ch] ? " mute" : "");
+  esp_err_t ret = db_update(s_ch_keys[ch], value);
+  if (ret == ESP_ERR_NOT_FOUND) {
+    ret = db_create(s_ch_keys[ch], value);
   }
   return ret;
 }

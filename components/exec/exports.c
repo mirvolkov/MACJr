@@ -38,6 +38,7 @@
 #include "png.h"
 #include "sdcard.h"
 #include "sdr.h"
+#include "speaker.h"
 #include "tty/list.h"
 #include "usbdev.h"
 
@@ -70,6 +71,12 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(db_read),
   ESP_ELFSYM_EXPORT(db_update),
   ESP_ELFSYM_EXPORT(db_watch),
+  ESP_ELFSYM_EXPORT(speaker_channel_name),
+  ESP_ELFSYM_EXPORT(speaker_set_volume),
+  ESP_ELFSYM_EXPORT(speaker_volume),
+  ESP_ELFSYM_EXPORT(speaker_set_mute),
+  ESP_ELFSYM_EXPORT(speaker_muted),
+  ESP_ELFSYM_EXPORT(speaker_save_volume),
   ESP_ELFSYM_EXPORT(ir_rx_read),
   ESP_ELFSYM_EXPORT(ir_rx_last_burst),
   ESP_ELFSYM_EXPORT(ir_proto_name),
