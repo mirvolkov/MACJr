@@ -470,16 +470,17 @@ esp_err_t exec_spawn(macjr_tty_t *tty, const char *path, int argc, char **argv, 
   return spawn(tty, path, NULL, argc, argv, status);
 }
 
-/* exec_launch() of the program at `path`, or of `entry` if set. */
-static void launch(macjr_tty_t *tty, const char *name, const char *path, macjr_main_t entry) {
+/* exec_launch() of the program at `path`, or of `entry` if set, with
+ * `argv` (argv[0] is the name shown). */
+static void launch(macjr_tty_t *tty, const char *path, macjr_main_t entry, int argc, char **argv) {
+  const char *name = argv[0];
   const char *clear = "\x1b[0m\x1b[2J\x1b[H\x1b[?25l";
   macjr_tty_write(tty, clear, strlen(clear));
   macjr_display_flush(tty);
 
-  char *argv[] = {(char *)name, NULL};
   size_t heap_before = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   int status = 0;
-  esp_err_t ret = spawn(tty, path, entry, 1, argv, &status);
+  esp_err_t ret = spawn(tty, path, entry, argc, argv, &status);
   size_t heap_after = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
   if (heap_before != heap_after) {
     ESP_LOGW(TAG, "PSRAM free %u -> %u bytes", (unsigned)heap_before, (unsigned)heap_after);
@@ -522,10 +523,22 @@ static void launch(macjr_tty_t *tty, const char *name, const char *path, macjr_m
   }
 }
 
+static char *base_name(const char *path) {
+  const char *slash = strrchr(path, '/');
+  return (char *)(slash ? slash + 1 : path);
+}
+
 void exec_launch(macjr_tty_t *tty, const char *path) {
-  launch(tty, strrchr(path, '/') ? strrchr(path, '/') + 1 : path, path, NULL);
+  char *argv[] = {base_name(path), NULL};
+  launch(tty, path, NULL, 1, argv);
+}
+
+void exec_launch_with(macjr_tty_t *tty, const char *path, const char *arg) {
+  char *argv[] = {base_name(path), (char *)arg, NULL};
+  launch(tty, path, NULL, 2, argv);
 }
 
 void exec_launch_main(macjr_tty_t *tty, const char *name, macjr_main_t entry) {
-  launch(tty, name, NULL, entry);
+  char *argv[] = {(char *)name, NULL};
+  launch(tty, NULL, entry, 1, argv);
 }

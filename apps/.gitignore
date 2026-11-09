@@ -1,1 +1,3 @@
 build/
+upython/micropython_embed/
+upython/build-embed/

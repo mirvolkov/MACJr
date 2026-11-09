@@ -25,7 +25,7 @@ esp_err_t exec_run(macjr_tty_t *tty, const char *path, int argc, char **argv, in
  * it. */
 #define EXEC_CORE       1
 #define EXEC_PRIORITY   0
-#define EXEC_STACK_SIZE 12288 /* the MK-52 formats floats */
+#define EXEC_STACK_SIZE 16384 /* internal SRAM: MicroPython runs in 16 KB, as on its ESP32 port */
 
 /* Exit code of a killed program: 128 + SIGKILL (9), as Unix shells show
  * it. */
@@ -41,6 +41,10 @@ esp_err_t exec_spawn(macjr_tty_t *tty, const char *path, int argc, char **argv, 
  * on a cleared screen, then show its exit code or why it couldn't run and
  * wait for Cx. A killed program returns at once, without a message. */
 void exec_launch(macjr_tty_t *tty, const char *path);
+
+/* exec_launch() with one argument: argv[1] = `arg`. How the navigator
+ * opens a file with the program for it (a .py script with UPYTHON.ELF). */
+void exec_launch_with(macjr_tty_t *tty, const char *path, const char *arg);
 
 /* exec_launch() for a program built into the firmware: `entry` is its
  * main(), `name` its argv[0]. For development: no SD card round trip. */

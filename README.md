@@ -40,13 +40,13 @@ Wi-Fi network, the current directory and the time, set over NTP, with a
 blinking colon. The network and the time appear only while they are known.
 
 Each row shows a name, extension and size. Directories come first, and
-colour marks the type: directories are white, programs cyan, images yellow,
-sounds purple and everything else grey. Hidden files are left out.
+colour marks the type: directories are white, programs cyan, Python scripts
+green, images yellow, sounds purple and everything else grey. Hidden files are left out.
 
 | MK-52 key | Action |
 |---|---|
 | П→x / x→П | Move the selection |
-| В↑ | Open a directory, or start a program (an ELF file) |
+| В↑ | Open a directory, start a program (an ELF file), or run a Python script |
 | Cx | Go up a directory |
 | F + K | System monitor: CPU, memory, temperature, SD card |
 | F + Cx | Kill the running program |
@@ -105,10 +105,15 @@ had run out of digit keys, became the navigator above. Its first header
 vanished off the top of the screen, which led to a console that wraps lines
 like a real terminal.
 
+Then came a language. MicroPython runs as an ordinary program, started on a
+`.py` file from the navigator or as a REPL. Getting there took a stack that
+was too big to allocate, and an exception mechanism written for a different
+Xtensa calling convention that crashed the board on the first `raise`.
+
 So far this is step one, full hardware support. The radio is unfinished,
 because the USB microphone never worked well. Ahead lie the kernel, with
 processes, memory and file systems, then a standard library, a cross-compiler
 and more programs.
 
-The full log is in 11 short topic stories, with code and real logs, in
+The full log is in 12 short topic stories, with code and real logs, in
 [journey/](journey/).

@@ -21,8 +21,21 @@ OUT            := build
 lower = $(shell echo $(1) | tr A-Z a-z)
 upper = $(shell echo $(1) | tr a-z A-Z)
 
-APPS := $(sort $(patsubst %/,%,$(dir $(wildcard */*.c))))
+# upython has extra sources (the micropython_embed package); handle it
+# separately so the generic pattern rule doesn't apply to it.
+APPS := $(sort $(filter-out upython,$(patsubst %/,%,$(dir $(wildcard */*.c)))))
 ELFS := $(foreach a,$(APPS),$(OUT)/$(call upper,$(a)).ELF)
+
+# upython: include in the build only if the embed package has been generated.
+# To generate it once: cd apps/upython && make -f Makefile.embed
+EMBED_DIR      := upython/micropython_embed
+EMBED_SENTINEL := $(EMBED_DIR)/py/objstr.c
+ifneq ($(wildcard $(EMBED_SENTINEL)),)
+  ELFS += $(OUT)/UPYTHON.ELF
+else
+  $(info upython: embed package not found — skipping UPYTHON.ELF)
+  $(info         Run: cd apps/upython && make -f Makefile.embed)
+endif
 
 # Objects of program NAME (directory name in lower case)
 app_objs = $(patsubst %.c,$(OUT)/obj/%.o,$(wildcard $(call lower,$(1))/*.c))
@@ -58,6 +71,13 @@ all: $(ELFS)
 
 .SECONDEXPANSION:
 
+# The MicroPython package sources, with their own flags (EMBED_CFLAGS,
+# below). This rule must come before the generic one: make 3.81 (macOS)
+# takes the first pattern rule that matches, not the most specific.
+$(OUT)/obj/upython/micropython_embed/%.o: upython/micropython_embed/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(EMBED_CFLAGS) -c $< -o $@
+
 # Compile and link are separate steps: the firmware flags carry the
 # picolibc specs, which must not reach the shared-object link.
 $(OUT)/obj/%.o: %.c $$(wildcard $$(dir $$*)*.h) ../sdk/include/macjr.h
@@ -75,16 +95,65 @@ $(OUT)/%.ELF: $$(call app_objs,$$*) $(LIBGCC) $(EXPORTS)
 	@python3 tools/checkelf.py $(CROSS)readelf $@ $(EXPORTS) || { rm -f $@; exit 1; }
 	@echo "$@: $$(wc -c < $@) bytes"
 
+# ---- upython: MicroPython REPL ----
+#
+# The embed package (micropython_embed/) is compiled with its own flags:
+#   - no firmware defines (avoid ESP-IDF macro clashes with C99 MicroPython)
+#   - -fno-math-errno so libm never touches errno
+#   - warnings relaxed (upstream code has intentional patterns)
+#
+# The app glue (main.c, mphalport.c) uses the standard firmware CFLAGS.
+
+EMBED_CFLAGS := -std=c99 -O2 \
+  -Wall -Wno-unused-variable -Wno-sign-compare \
+  -Wno-missing-field-initializers -Wno-unused-function \
+  -ffunction-sections -fdata-sections -fvisibility=hidden -fPIC \
+  -fno-math-errno \
+  -I upython \
+  -I $(EMBED_DIR) \
+  -I $(EMBED_DIR)/port
+
+UPHY_SRCS  := upython/main.c upython/mphalport.c
+UPHY_OBJS  := $(patsubst %.c,$(OUT)/obj/%.o,$(UPHY_SRCS))
+# port/mphalport.c is the package's printf stub; upython/mphalport.c
+# replaces it with the tty.
+EMBED_SRCS := $(filter-out $(EMBED_DIR)/port/mphalport.c,$(wildcard $(EMBED_DIR)/*/*.c $(EMBED_DIR)/*/*/*.c))
+EMBED_OBJS := $(patsubst %.c,$(OUT)/obj/%.o,$(EMBED_SRCS))
+
+# upython glue: compiled with firmware flags + embed includes
+$(OUT)/obj/upython/main.o: upython/main.c $(EMBED_SENTINEL) ../sdk/include/macjr.h
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -I upython -I $(EMBED_DIR) -I $(EMBED_DIR)/port \
+	      -Wno-unused-function -c $< -o $@
+
+$(OUT)/obj/upython/mphalport.o: upython/mphalport.c $(EMBED_SENTINEL) ../sdk/include/macjr.h
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -I upython -I $(EMBED_DIR) -I $(EMBED_DIR)/port \
+	      -Wno-unused-function -c $< -o $@
+
+$(OUT)/UPYTHON.ELF: $(UPHY_OBJS) $(EMBED_OBJS) $(LIBGCC) $(EXPORTS)
+	$(CC) $(LDFLAGS) $(filter %.o,$^) $(LDLIBS) -o $@
+	$(STRIP) $(STRIPFLAGS) $@
+	@python3 tools/checkelf.py $(CROSS)readelf $@ $(EXPORTS) || { rm -f $@; exit 1; }
+	@echo "$@: $$(wc -c < $@) bytes"
+
 install: all
 	@test -n "$(CARD)" || { echo "usage: make install CARD=/Volumes/<card>"; exit 1; }
 	mkdir -p "$(CARD)/BIN"
 	cp $(ELFS) "$(CARD)/BIN/"
 	-command -v dot_clean >/dev/null && dot_clean -m "$(CARD)/BIN" # macOS ._ metadata files
 
+install-demo:
+	@test -n "$(CARD)" || { echo "usage: make install-demo CARD=/Volumes/<card>"; exit 1; }
+	mkdir -p "$(CARD)/PY"
+	cp upython/demo.py "$(CARD)/PY/"
+	-command -v dot_clean >/dev/null && dot_clean -m "$(CARD)/PY"
+
 clean:
 	rm -rf $(OUT)
+	rm -rf upython/build-embed
 
-.PHONY: all install clean
+.PHONY: all install install-demo clean
 
 # keep the objects for incremental rebuilds
 .SECONDARY:

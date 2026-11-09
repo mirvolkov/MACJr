@@ -4,7 +4,8 @@
  * saved by the WIFI program joined in the background (the clock is then
  * set over NTP), starts the system monitor (keys F+K), then loops over the
  * file navigator (components/boot) and the program picked there: an ELF
- * file on the SD card, loaded and run by components/exec (apps/: IDE demo,
+ * file on the SD card, loaded and run by components/exec, or a .py
+ * script, run by /BIN/UPYTHON.ELF (apps/: IDE demo,
  * MK-52 calculator, SoftRock SDR radio, USB drive, port layout picture,
  * remote control, Wi-Fi, mixer, hello). A program can also be built into
  * the firmware while it is developed: pass it to boot_select() as a
@@ -16,6 +17,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -104,6 +106,14 @@ static void wifi_task(void *arg) {
   }
 }
 
+/* A .py file from the navigator runs as UPYTHON.ELF <file>. */
+#define PYTHON_PATH EXEC_BIN_DIR "/UPYTHON.ELF"
+
+static bool is_script(const char *path) {
+  const char *dot = strrchr(path, '.');
+  return dot && strcasecmp(dot, ".py") == 0;
+}
+
 static void start_monitor(macjr_tty_t *tty) {
   if (monitor_start(tty) != ESP_OK) {
     ESP_LOGW(TAG, "monitor_start failed");
@@ -160,6 +170,8 @@ void app_main(void) {
     boot_select(tty, NULL, 0, path, sizeof(path), &builtin); /* no built-in programs now */
     if (builtin) {
       exec_launch_main(tty, builtin->name, builtin->main);
+    } else if (is_script(path)) {
+      exec_launch_with(tty, PYTHON_PATH, path);
     } else {
       exec_launch(tty, path);
     }

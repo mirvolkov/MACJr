@@ -1,0 +1,36 @@
+# Generate the micropython_embed/ source package from the vendor submodule.
+#
+# Run once (or after updating the submodule):
+#
+#   cd apps/upython
+#   make -f Makefile.embed
+#
+# Output: micropython_embed/ — ready-to-compile .c/.h files.
+# That directory is git-ignored; the main apps/Makefile compiles it.
+#
+# Requires: Python 3 and a host C compiler (defaults to cc).
+
+MICROPYTHON_TOP ?= ../../vendor/micropython
+PACKAGE_DIR     := micropython_embed
+BUILD           := build-embed
+
+# Host tools for the generation step (Python scripts + C preprocessing).
+# The resulting .c files are cross-compiled by apps/Makefile.
+CC     ?= cc
+PYTHON ?= python3
+
+# extmod modules to add: the embed package takes only py/. They go into
+# the qstr scan here (before embed.mk reads SRC_QSTR) and are copied into
+# micropython_embed/extmod after it is generated.
+EMBED_EXTMOD := modtime
+
+SRC_QSTR += $(addprefix extmod/,$(addsuffix .c,$(EMBED_EXTMOD)))
+
+include $(MICROPYTHON_TOP)/ports/embed/embed.mk
+
+all: embed-extmod
+
+.PHONY: embed-extmod
+embed-extmod: micropython-embed-package
+	$(ECHO) "- extmod: $(EMBED_EXTMOD)"
+	$(Q)$(CP) $(foreach m,$(EMBED_EXTMOD),$(TOP)/extmod/$(m).c $(TOP)/extmod/$(m).h) $(PACKAGE_DIR)/extmod
