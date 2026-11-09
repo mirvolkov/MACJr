@@ -15,7 +15,9 @@
  * connected and the time on the right once the clock is set (NTP), each
  * left out while it isn't there. The clock's colon blinks once a second;
  * the header is checked twice a second. The bracketed text is white on
- * black. The scroll bar is the panel's right edge, between ╗ and ╝.
+ * black. The scroll bar is the panel's right edge, between ╗ and ╝. While
+ * a USB keyboard is plugged in (USB keyboard mode, F + А↑) the bottom edge
+ * shows ╚═[USB KBRD]═…╝, the label red.
  *
  * The panel lists name, extension and file size, directories first;
  * built-in programs come first in the root. Colors by type: directories
@@ -55,6 +57,7 @@
 #include "net.h"
 #include "sdcard.h"
 #include "tty/list.h"
+#include "usbdev.h"
 
 static const char *TAG = "boot";
 
@@ -96,6 +99,8 @@ static const char *TAG = "boot";
 
 #define COLOR_FIELD "\x1b[0;97;40m" /* header text in brackets: white on black */
 #define COLOR_FRAME "\x1b[0;37m"
+#define COLOR_USB_KBD "\x1b[0;91;40m" /* bottom edge label: red on black */
+#define USB_KBD_LABEL "USB KBRD"
 
 typedef enum {
   KIND_UP, /* ".." */
@@ -382,10 +387,12 @@ static void frame_row(char *buf, char l, char r) {
 }
 
 /* The top edge: ╔═[network]═══[path]═══[hh:mm]═╗. mark[i] is set for the
- * cells inside the brackets, drawn in COLOR_FIELD. */
+ * cells inside the brackets, drawn in COLOR_FIELD. Also what the bottom
+ * edge shows, so a change there is noticed the same way. */
 typedef struct {
   char text[COLS + 1];
   char mark[COLS];
+  bool usb_kbd; /* bottom edge: ╚═[USB KBRD]═══╝ while a USB keyboard is plugged in */
 } header_t;
 
 static void put_field(header_t *h, int col, const char *s, int len) {
@@ -401,6 +408,7 @@ static void put_field(header_t *h, int col, const char *s, int len) {
 static void header_build(header_t *h) {
   frame_row(h->text, G_TL, G_TR);
   memset(h->mark, 0, sizeof(h->mark));
+  h->usb_kbd = usb_kbd_connected();
   int lo = 2, hi = COLS - 2; /* fields go in [lo, hi), ═ around them */
 
   char ssid[NET_SSID_MAX + 1];
@@ -462,19 +470,29 @@ static void draw_header(macjr_tty_t *tty, const header_t *h) {
   macjr_tty_write(tty, buf, n);
 }
 
-static void draw_frame(macjr_tty_t *tty) {
+/* ╚═[USB KBRD]══…══╝ while a USB keyboard is plugged in (F + А↑ on), else plain. */
+static void draw_bottom(macjr_tty_t *tty, const header_t *h) {
+  char row[COLS + 1];
+  frame_row(row, G_BL, G_BR);
+  if (h->usb_kbd) {
+    at(tty, ROW_BOTTOM, 1, COLOR_FRAME "%.2s[" COLOR_USB_KBD USB_KBD_LABEL COLOR_FRAME "]%s\x1b[0m", row,
+       row + 2 + sizeof(USB_KBD_LABEL) + 1);
+  } else {
+    at(tty, ROW_BOTTOM, 1, COLOR_FRAME "%s\x1b[0m", row);
+  }
+}
+
+static void draw_frame(macjr_tty_t *tty, const header_t *h) {
   for (int r = ROW_LIST; r < ROW_BOTTOM; r++) {
     at(tty, r, 1, COLOR_FRAME G_V);
   }
-  char row[COLS + 1];
-  frame_row(row, G_BL, G_BR);
-  at(tty, ROW_BOTTOM, 1, COLOR_FRAME "%s\x1b[0m", row);
+  draw_bottom(tty, h);
 }
 
 static void draw(macjr_tty_t *tty, const header_t *header) {
   out(tty, "\x1b[?25l\x1b[0m\x1b[2J");
   draw_header(tty, header);
-  draw_frame(tty);
+  draw_frame(tty, header);
   macjr_tty_list_draw(tty, &s_list);
   if (!s_scan_ok) {
     at(tty, ROW_LIST + 4, COL_LIST + 2, "\x1b[0;91m%s",
@@ -545,6 +563,7 @@ void boot_select(macjr_tty_t *tty, const boot_builtin_t *builtins, int n_builtin
     } else if (memcmp(&now, &header, sizeof(now)) != 0) {
       header = now;
       draw_header(tty, &header);
+      draw_bottom(tty, &header);
       macjr_display_flush(tty);
     }
     if (key < 0 || KBD_IS_CHORD(key)) {

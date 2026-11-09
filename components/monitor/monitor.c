@@ -28,6 +28,7 @@
 #include "keyboard.h"
 #include "sdcard.h"
 #include "tty/window.h"
+#include "usbdev.h"
 
 #if !CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
 #error "monitor needs CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS for CPU load"
@@ -242,6 +243,23 @@ static void take_screenshot(void) {
   }
 }
 
+/* USB_KBD_KEY: switch the USB keyboard on or off, and say so. */
+static void toggle_usb_kbd(void) {
+  if (usb_kbd_active()) {
+    usb_kbd_stop();
+    notice("USB keyboard", "Off", "97");
+    return;
+  }
+  esp_err_t err = usb_kbd_start();
+  if (err == ESP_OK) {
+    notice("USB keyboard", "On: plug in a keyboard", "97");
+  } else if (err == ESP_ERR_INVALID_STATE) {
+    notice("USB keyboard", "USB is in use", "93");
+  } else {
+    notice("USB keyboard", esp_err_to_name(err), "93");
+  }
+}
+
 void monitor_set_enabled(bool on) {
   s_enabled = on;
 }
@@ -272,6 +290,8 @@ static void monitor_task(void *arg) {
       run_monitor(fd);
     } else if (key == SCREENSHOT_KEY) {
       take_screenshot();
+    } else if (key == USB_KBD_KEY) {
+      toggle_usb_kbd();
     }
   }
 }

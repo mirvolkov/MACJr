@@ -17,5 +17,5 @@ Apps:
 - audio player
 - fetch date/time; network stack?
 - gpaphic plotters, matrix op visualizer? 
-- micropython
 - games? tetris, Roguelike, 
+- https://espargos.net/espsdr/ - ESP32 as SDR. Drone sniffer? TX as wifi/ble jammer?

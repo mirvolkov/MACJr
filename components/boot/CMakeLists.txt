@@ -3,5 +3,5 @@
 idf_component_register(
   SRCS "boot.c"
   INCLUDE_DIRS "."
-  REQUIRES display keyboard exec sdcard monitor net db
+  REQUIRES display keyboard exec sdcard monitor net db usbdev
 )

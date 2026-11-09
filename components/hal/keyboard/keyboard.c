@@ -104,6 +104,7 @@ static const kbd_chord_t s_chords[] = {
     { KEY_MK_F, KEY_MK_K, KEY_MK_F_K },
     { KEY_MK_F, KEY_ESC, KEY_MK_F_ESC },
     { KEY_MK_F, KEY_MK_UPDOWN, KEY_MK_F_UPDOWN },
+    { KEY_MK_F, KEY_MK_A_UP, KEY_MK_F_A_UP },
 };
 
 typedef struct {
@@ -228,6 +229,13 @@ static void key_publish(uint8_t code)
         }
     }
     xSemaphoreGive(s_readers_lock);
+}
+
+void keyboard_inject(uint8_t code)
+{
+    if (s_readers_lock) {
+        key_publish(code);
+    }
 }
 
 /* The chord `a` and `b` make, or 0. */

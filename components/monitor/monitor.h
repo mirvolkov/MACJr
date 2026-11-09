@@ -19,6 +19,11 @@ extern "C" {
  * any time, on any screen, the monitor's too. */
 #define SCREENSHOT_KEY KEY_MK_F_UPDOWN
 
+/* Key that turns USB keyboard mode on or off: MK-52 F and А↑ together.
+ * On, the USB OTG port is a host and a USB keyboard plugged into it types
+ * into /dev/kbrd alongside the MK-52 keys (usb_kbd_start, usbdev.h). */
+#define USB_KBD_KEY KEY_MK_F_A_UP
+
 /* Start the monitor task. From then on MONITOR_KEY, pressed at any time,
  * saves the screen of `tty` and shows CPU load per core, internal RAM and
  * PSRAM usage, chip temperature and SD card status, refreshed every second.

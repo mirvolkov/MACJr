@@ -4,6 +4,9 @@
  * stdout → macjr_tty_write (LCD)
  * stdin  → sys_getkey with MK-52 → ASCII translation
  *
+ * A USB keyboard (F + А↑) sends ASCII, used as it is; Enter and Backspace
+ * come as В↑ and Cx.
+ *
  * Key layout (see components/hal/keyboard/keyboard.h):
  *
  *   Direct:   0-9 → '0'-'9',  . → '.',  + → '+',  − → '-',  × → '*',
@@ -61,6 +64,13 @@ static void translate_key(int key) {
 
     /* Chords (system-level, shouldn't reach here, but skip them). */
     if (KBD_IS_CHORD(key)) return;
+
+    /* A USB keyboard (F + А↑) types ASCII itself: 1-127, Cx (ESC) aside. */
+    if (key > 0 && key < 128 && key != KEY_ESC) {
+        s_prefix = 0;
+        buf_put((char)key);
+        return;
+    }
 
     int pfx = s_prefix;
     s_prefix = 0;

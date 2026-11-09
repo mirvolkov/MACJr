@@ -23,7 +23,7 @@ extern "C" {
  *  - Keys that start a chord (F, K, Cx, ↑↓) are sent when released, unless
  *    a partner is pressed while they are held: then the chord's own code
  *    is sent instead of either key (KEY_MK_F_K, KEY_MK_F_ESC,
- *    KEY_MK_F_UPDOWN). Another key pressed while one is held sends the
+ *    KEY_MK_F_UPDOWN, KEY_MK_F_A_UP). Another key pressed while one is held sends the
  *    held key first. */
 #define KBD_DEV_PATH "/dev/kbrd"
 
@@ -91,6 +91,7 @@ extern "C" {
 #define KEY_MK_F_K      160 /* F and K: system monitor */
 #define KEY_MK_F_ESC    161 /* F and Cx: kill the running program */
 #define KEY_MK_F_UPDOWN 162 /* F and ↑↓: screenshot */
+#define KEY_MK_F_A_UP   163 /* F and А↑: USB keyboard on / off */
 
 /* Chords belong to the system: programs get them too, and skip them. */
 #define KBD_IS_CHORD(code) ((code) >= KEY_MK_F_K)
@@ -104,6 +105,12 @@ esp_err_t keyboard_init(void);
  * after keyboard_init() it waits for the first scans to finish, so it can be
  * used at boot to check for a key held since power-up. */
 bool keyboard_key_down(uint8_t code);
+
+/* Hand `code` to every reader of KBD_DEV_PATH as if it had been typed:
+ * how another keyboard joins the MK-52 one. A USB keyboard (usbdev) sends
+ * ASCII 1-127 for characters and MK-52 codes for the keys programs know
+ * (В↑, Cx, П→x, x→П). Any task. */
+void keyboard_inject(uint8_t code);
 
 #ifdef __cplusplus
 }

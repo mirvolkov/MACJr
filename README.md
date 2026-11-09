@@ -51,6 +51,7 @@ green, images yellow, sounds purple and everything else grey. Hidden files are l
 | F + K | System monitor: CPU, memory, temperature, SD card |
 | F + Cx | Kill the running program |
 | F + ↑↓ | Save a screenshot to the SD card, like the one above |
+| F + А↑ | USB keyboard on / off: a keyboard plugged into the USB port types too |
 
 When a program ends, the navigator comes back to the same place. After a
 reboot it opens the last directory again, on the last program started from
@@ -109,6 +110,9 @@ Then came a language. MicroPython runs as an ordinary program, started on a
 `.py` file from the navigator or as a REPL. Getting there took a stack that
 was too big to allocate, and an exception mechanism written for a different
 Xtensa calling convention that crashed the board on the first `raise`.
+Python wanted keys the calculator doesn't have, so F and А↑ turn the USB
+port into a host for a real keyboard, through the host side of the same
+TinyUSB stack.
 
 So far this is step one, full hardware support. The radio is unfinished,
 because the USB microphone never worked well. Ahead lie the kernel, with

@@ -1,4 +1,4 @@
-# 6. USB: one stack, two personalities
+# 6. USB: one stack, three personalities
 
 Copying files onto the SD card meant pulling it out, and soon the board will
 be sealed inside the MK-52 case. `esptool` only writes the ESP32's own flash.
@@ -59,6 +59,44 @@ The order matters: USB goes down first and the card comes back last, so the
 host and the ESP32 never write to it at the same time. Eject the drive before
 killing USBDRIVE, though. To the host a kill is a pulled cable.
 
+## A keyboard on the other end
+
+The MK-52 keys can't type `<`, `>` or a capital letter, and
+[Python](12-micropython.md) wants all three. So the same port learned to be
+the other side of the cable: with F + А↑ it becomes a USB *host*, and a real
+keyboard plugged into it types into the system.
+
+ESP-IDF 6 moved its own USB host library out to the component registry, but
+TinyUSB 0.19 already had a host stack in the package: `usbh.c`, the DWC2 host
+driver for the S3's OTG controller, and a HID class. Espressif's component
+just doesn't compile them. The `usbdev` CMake now adds those four files to the
+TinyUSB library, and `tusb_config.h` turns the host side on next to the device
+side. The role is picked at run time with `tusb_rhport_init()`. One gap came
+with running both roles: the ESP32 interrupt glue calls the device and the
+host handler, but each driver file only declares its own. Our config header
+declares both, so the managed component stays untouched.
+
+The keyboard is asked for the boot protocol, an 8-byte report that every
+keyboard speaks: modifiers and six key codes. A code that wasn't in the
+previous report is a key press. It reaches programs through a new
+`keyboard_inject()`, on the same `/dev/kbrd` as the MK-52 keys:
+
+- printable keys arrive as ASCII, with Shift
+- Enter arrives as В↑, Esc and Backspace as Cx
+- ↑ and ↓ arrive as П→x and x→П
+
+So the navigator and every program work with it unchanged, and UPYTHON takes
+ASCII as it is. While a keyboard is plugged in, the navigator's bottom edge
+reads `╚═[USB KBRD]═…╝`, in red.
+
+Device and host take turns on one port, and each stops only its own role.
+That matters because `exec` calls `usbdev_stop()` after every program, as
+part of putting things back. If it stopped the host too, every program exit
+would cut the keyboard off.
+
 **Result:** the SD card shared with a computer at USB full speed (up to about
-1 MB/s), and USB back to its default when the program ends. The teardown had
-not been tried on the board when this was written.
+1 MB/s), USB back to its default when the program ends, and a USB keyboard
+with F + А↑, with no new dependency. The drive's teardown had not been tried
+on the board when this was written, and neither had the keyboard: in host
+mode the S3 doesn't power VBUS, so the keyboard needs 5 V from the board's
+OTG jumper or a powered adapter.
