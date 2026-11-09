@@ -2,7 +2,7 @@
  * REMOTE.ELF -- remote control: shows the last IR command received and
  * sends it again on А↑; Cx ends it.
  *
- *   ════════════ Remote control ════════════
+ *   ════════════[Remote control]════════════
  *
  *   Protocol  NEC
  *   Address   0x00

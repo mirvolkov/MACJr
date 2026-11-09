@@ -4,7 +4,7 @@
  * reopened raw, and only then handed to the host. The file list on screen
  * is therefore the card as it was when the mode started.
  *
- *   ═══════════ MacJr USB drive ════════════
+ *   ═══════════[MacJr USB drive]════════════
  *
  *   Card   USD  14.9 GB
  *   Host   connected

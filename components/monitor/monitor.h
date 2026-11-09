@@ -26,9 +26,11 @@ extern "C" {
  * and once `tty` exists. */
 esp_err_t monitor_start(macjr_tty_t *tty);
 
-/* Save what the panel shows as SHOTS/SHOTnnnn.PNG on the SD card; the
- * outcome goes to the log. SCREENSHOT_KEY does this. */
-void screenshot_save(macjr_tty_t *tty);
+/* Save what the panel shows as SHOTS/SHOTnnnn.PNG on the SD card. True on
+ * success, with the file ("SHOTS/SHOT0008.PNG") in `msg`; false with the
+ * reason in `msg`. SCREENSHOT_KEY does this, and shows the outcome in a
+ * window for a second. */
+bool screenshot_save(macjr_tty_t *tty, char *msg, size_t len);
 
 /* Switch MONITOR_KEY handling off (for an app that needs that key itself)
  * or back on. On by default. */

@@ -6,7 +6,7 @@
  * heard at once and saved in the db for the next boot. A bar is green up
  * to 70 %, white above that and red above 90 %; grey when muted.
  *
- *   ═════════════════ Mixer ════════════════
+ *   ═════════════════[Mixer]════════════════
  *    Card: MAX98357A          Item: Master
  *        100           80            30
  *       ┌──┐          ┌──┐          ┌──┐

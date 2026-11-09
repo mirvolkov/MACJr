@@ -6,9 +6,9 @@ Soviet *Elektronika MK-52* programmable calculator, using the calculator's
 own keyboard.
 
 The system is a text console of 40x15 characters on a 320x240 display.
-A small firmware holds the hardware drivers, the tty, a boot menu, a system
-monitor and a program loader. Everything else is a program: an ELF file on
-the SD card, started from the menu. The final goal is a proper kernel, a set
+A small firmware holds the hardware drivers, the tty, a file navigator, a
+system monitor and a program loader. Everything else is a program: an ELF
+file on the SD card, started from the navigator. The final goal is a proper kernel, a set
 of libraries and a cross-compiler.
 
 ## The motherboard
@@ -29,6 +29,32 @@ test pattern on the display.
 | IR receiver and LED | Receives and sends remote control commands |
 
 The last three parts are not in this photo.
+
+## The boot program
+
+<img src="images/SHOT0007.PNG" alt="The MACJr file navigator: a double-lined panel listing the programs in /BIN, with the Wi-Fi network, the path and the time in the top border" width="480">
+
+The board boots into a file navigator in the style of DOS Navigator: one
+panel over the SD card, starting where it was left. The top border shows the
+Wi-Fi network, the current directory and the time, set over NTP, with a
+blinking colon. The network and the time appear only while they are known.
+
+Each row shows a name, extension and size. Directories come first, and
+colour marks the type: directories are white, programs cyan, images yellow,
+sounds purple and everything else grey. Hidden files are left out.
+
+| MK-52 key | Action |
+|---|---|
+| П→x / x→П | Move the selection |
+| В↑ | Open a directory, or start a program (an ELF file) |
+| Cx | Go up a directory |
+| F + K | System monitor: CPU, memory, temperature, SD card |
+| F + Cx | Kill the running program |
+| F + ↑↓ | Save a screenshot to the SD card, like the one above |
+
+When a program ends, the navigator comes back to the same place. After a
+reboot it opens the last directory again, on the last program started from
+it.
 
 ## The journey
 
@@ -72,8 +98,12 @@ The system then grew more Unix-like. An IR port replaced the analog inputs.
 wait instead of polling. Wi-Fi arrived with a scrolling list window, the
 console's first real widget. Key chords gave the system a kill: F and Cx end
 any program, and its descriptors, memory, USB and SD card are put back.
-Last came PNG screenshots from a shadow framebuffer, and the first zoomed-in
+PNG screenshots came from a shadow framebuffer, and the first zoomed-in
 picture showed double-line box corners that nobody had noticed were wrong.
+A mixer added volume control to the speaker. Finally the boot menu, which
+had run out of digit keys, became the navigator above. Its first header
+vanished off the top of the screen, which led to a console that wraps lines
+like a real terminal.
 
 So far this is step one, full hardware support. The radio is unfinished,
 because the USB microphone never worked well. Ahead lie the kernel, with
@@ -81,4 +111,4 @@ processes, memory and file systems, then a standard library, a cross-compiler
 and more programs.
 
 The full log is in 11 short topic stories, with code and real logs, in
-[journey/](journey/README.md).
+[journey/](journey/).

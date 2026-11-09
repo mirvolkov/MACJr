@@ -2,7 +2,7 @@
  * MK52.ELF -- Elektronika MK-52 calculator: draws the screen and feeds /dev/kbrd keys to the
  * calculator core (mk52_core.c).
  *
- *   ══════════ Электроника МК-52 ═══════════
+ *   ══════════[Электроника МК-52]═══════════
  *
  *                            -1.2345678-01   <- the VFD digit line (red)
  *

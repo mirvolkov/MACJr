@@ -6,6 +6,7 @@
 #include "monitor.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
 
 #include "esp_heap_caps.h"
@@ -31,33 +32,38 @@ static bool next_path(char *path, size_t len) {
   return false;
 }
 
-void screenshot_save(macjr_tty_t *tty) {
+/* Log `text` as a failure and hand it to the caller. */
+static bool fail(char *msg, size_t len, const char *text) {
+  ESP_LOGW(TAG, "screenshot: %s", text);
+  snprintf(msg, len, "%s", text);
+  return false;
+}
+
+bool screenshot_save(macjr_tty_t *tty, char *msg, size_t len) {
   macjr_hal_display_t *d = macjr_tty_display(tty);
   if (!d->read_rgb888) {
-    ESP_LOGW(TAG, "the display keeps no copy of its picture");
-    return;
+    return fail(msg, len, "Display can't be read");
   }
   struct stat st;
   if (stat(SHOT_DIR, &st) != 0 && mkdir(SHOT_DIR, 0775) != 0) {
-    ESP_LOGW(TAG, "cannot create %s: no SD card?", SHOT_DIR);
-    return;
+    return fail(msg, len, "No SD card");
   }
   char path[64];
   if (!next_path(path, sizeof(path))) {
-    ESP_LOGW(TAG, "%s is full", SHOT_DIR);
-    return;
+    return fail(msg, len, "SHOTS is full");
   }
   uint8_t *rgb = heap_caps_malloc((size_t)d->width_px * d->height_px * 3, MALLOC_CAP_SPIRAM);
   if (!rgb) {
-    ESP_LOGW(TAG, "no memory for the image");
-    return;
+    return fail(msg, len, "Out of memory");
   }
   d->read_rgb888(d, rgb);
   esp_err_t err = png_write_file(path, d->width_px, d->height_px, rgb);
   heap_caps_free(rgb);
-  if (err == ESP_OK) {
-    ESP_LOGI(TAG, "saved %s", path);
-  } else {
+  if (err != ESP_OK) {
     ESP_LOGW(TAG, "saving %s failed: %s", path, esp_err_to_name(err));
+    return fail(msg, len, "Writing the file failed");
   }
+  ESP_LOGI(TAG, "saved %s", path);
+  snprintf(msg, len, "%s", path + strlen(SDCARD_MOUNT_POINT) + 1); /* SHOTS/SHOTnnnn.PNG */
+  return true;
 }

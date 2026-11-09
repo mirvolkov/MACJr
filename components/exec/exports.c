@@ -40,6 +40,7 @@
 #include "sdr.h"
 #include "speaker.h"
 #include "tty/list.h"
+#include "tty/window.h"
 #include "usbdev.h"
 
 const struct esp_elfsym g_exec_exports[] = {
@@ -60,6 +61,9 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(macjr_tty_list_set_count),
   ESP_ELFSYM_EXPORT(macjr_tty_list_move),
   ESP_ELFSYM_EXPORT(macjr_tty_list_draw),
+  ESP_ELFSYM_EXPORT(macjr_tty_window_center),
+  ESP_ELFSYM_EXPORT(macjr_tty_window_draw),
+  ESP_ELFSYM_EXPORT(macjr_tty_window_text),
 
   /* system monitor */
   ESP_ELFSYM_EXPORT(monitor_is_open),

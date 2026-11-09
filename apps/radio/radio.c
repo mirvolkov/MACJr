@@ -4,7 +4,7 @@
  * (components/hal/mic). The screen shows the frequency the LO runs at and
  * the one being typed:
  *
- *   ═════════════ SoftRock SDR ═════════════
+ *   ═════════════[SoftRock SDR]═════════════
  *
  *   Active    7.055000 MHz       (green)
  *   Input    14.074_   MHz

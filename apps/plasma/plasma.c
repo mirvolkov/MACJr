@@ -5,7 +5,7 @@
  *       the boot menu runs: it passes no arguments)
  *   -r  rainbow: random glyphs in random colors, frame after frame
  *
- *   ════════════════ PLASMA ════════════════
+ *   ════════════════[PLASMA]════════════════
  *   rows 2-14: random glyphs
  *   row 15:    hint
  */

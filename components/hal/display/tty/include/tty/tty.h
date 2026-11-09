@@ -59,10 +59,11 @@ macjr_hal_display_t *macjr_tty_display(macjr_tty_t *tty);
 /* App header bar character: CP866 double horizontal line. */
 #define MACJR_TTY_HEADER_CHAR '\xCD'
 
-/* Draw the app header on the top row, the title centered between bars
- * across the whole width:
+/* Draw the app header on the top row, the title in brackets centered
+ * between bars across the whole width, as the navigator's top edge (grey
+ * bars, the title white on black):
  *
- *   ═════════════ SoftRock SDR ═════════════
+ *   ═════════════[SoftRock SDR]═════════════
  *
  * `title` is plain CP866 text without escapes. Leaves the cursor at the
  * start of row 2 and the colors reset; doesn't flush. */

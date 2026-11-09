@@ -12,11 +12,9 @@ Extensions and improvements:
 - tango nano as keyboard scanner and PSRAM extension
 - extend external port with SPI
 - VGA output with 80x25 screen size
-- IR TX power by transistor key 
 
 Apps:
-- audio player, volume control
-- MC (or dos navigator - https://github.com/maximmasiutin/Dos-Navigator)
+- audio player
 - fetch date/time; network stack?
 - gpaphic plotters, matrix op visualizer? 
 - micropython

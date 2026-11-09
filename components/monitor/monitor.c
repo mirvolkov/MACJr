@@ -27,6 +27,7 @@
 #include "freertos/task.h"
 #include "keyboard.h"
 #include "sdcard.h"
+#include "tty/window.h"
 
 #if !CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
 #error "monitor needs CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS for CPU load"
@@ -38,11 +39,18 @@
 #define TASK_PRIO 3
 #define BAR_W 20
 
+/* The window that shows a screenshot's outcome */
+#define NOTICE_MS 1000
+#define NOTICE_W  30 /* frame included */
+#define NOTICE_H  5
+
 /* CP866 glyphs from the built-in font. */
 #define CH_FULL "\xDB"
 #define CH_SHADE "\xB0"
 
 static const char *TAG = "monitor";
+
+static void take_screenshot(void);
 
 static macjr_tty_t *s_tty;
 static volatile bool s_open;
@@ -179,7 +187,7 @@ static void run_monitor(int fd) {
         break;
       }
       if (key == SCREENSHOT_KEY) {
-        screenshot_save(s_tty);
+        take_screenshot();
       }
     }
     vTaskDelay(pdMS_TO_TICKS(POLL_MS));
@@ -191,6 +199,46 @@ static void run_monitor(int fd) {
   s_open = false;
   if (s_redraw_cb) {
     s_redraw_cb(s_redraw_ctx); /* repaint what the app drew outside the tty */
+  }
+}
+
+/* Show a centered window with `title` in its top edge and `text` inside
+ * for NOTICE_MS, then put the screen back. Programs see the monitor open
+ * meanwhile, so they don't draw over it; inside the monitor page it just
+ * covers that page for a moment. */
+static void notice(const char *title, const char *text, const char *fg) {
+  bool was_open = s_open;
+  s_open = true;
+  macjr_tty_screen_t *saved = macjr_tty_save_screen(s_tty);
+  if (!saved) {
+    s_open = was_open;
+    return;
+  }
+  macjr_tty_window_t win;
+  macjr_tty_window_center(s_tty, &win, NOTICE_W, NOTICE_H);
+  macjr_tty_window_draw(s_tty, &win, title);
+  macjr_tty_window_text(s_tty, &win, (NOTICE_H - 2) / 2, fg, true, text);
+  macjr_display_flush(s_tty);
+
+  vTaskDelay(pdMS_TO_TICKS(NOTICE_MS));
+
+  macjr_tty_restore_screen(s_tty, saved);
+  macjr_display_flush(s_tty);
+  if (!was_open) {
+    s_open = false;
+    if (s_redraw_cb) {
+      s_redraw_cb(s_redraw_ctx); /* repaint what the app drew outside the tty */
+    }
+  }
+}
+
+/* SCREENSHOT_KEY: save the picture first, then say how it went. */
+static void take_screenshot(void) {
+  char msg[48];
+  if (screenshot_save(s_tty, msg, sizeof(msg))) {
+    notice("Screenshot taken", msg, "97");
+  } else {
+    notice("Screenshot failed", msg, "93");
   }
 }
 
@@ -223,7 +271,7 @@ static void monitor_task(void *arg) {
     if (key == MONITOR_KEY && s_enabled) {
       run_monitor(fd);
     } else if (key == SCREENSHOT_KEY) {
-      screenshot_save(s_tty);
+      take_screenshot();
     }
   }
 }

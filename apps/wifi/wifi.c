@@ -5,7 +5,7 @@
  * the db (NET_DB_KEY_SSID / NET_DB_KEY_PASS), and its password is filled
  * in the next time it is picked. Passwords are digits only for now.
  *
- *   ════════════════ Wi-Fi ═════════════════
+ *   ════════════════[Wi-Fi]═════════════════
  *   home                             *****▲
  *   office                           ***··■
  *   cafe                             **···▒
@@ -14,7 +14,7 @@
  *
  * The password window opens over the list:
  *
- *     ╔══════════════ home ══════════════╗
+ *     ╔══════════════[home]══════════════╗
  *     ║ Password                         ║
  *     ║ 12345678_                        ║
  *     ║                                  ║
@@ -35,6 +35,7 @@
 #include "monitor.h"
 #include "net.h"
 #include "tty/list.h"
+#include "tty/window.h"
 
 #define KEY_UP   KEY_MK_P_TO_X   /* П→x */
 #define KEY_DOWN KEY_MK_X_TO_P   /* x→П */
@@ -77,7 +78,8 @@ static macjr_tty_list_t s_list;
 
 static screen_t s_screen;
 static char s_pass[NET_PASS_MAX + 1];
-static const char *s_msg; /* in the password window, with its color */
+static const char *s_msg; /* in the password window, with its color (SGR foreground) */
+static const macjr_tty_window_t s_win = {WIN_ROW, WIN_COL, WIN_W, WIN_H};
 static char s_msg_buf[48];
 
 static char s_saved_ssid[NET_SSID_MAX + 1];
@@ -137,48 +139,22 @@ static void draw_empty(void) {
   }
 }
 
-/* Frame row of the password window: corner `l`, `fill` with `title` in
- * the middle (if any), corner `right`. */
-static void frame_row(int r, char l, char fill, char right, const char *title) {
-  char buf[WIN_W + 1];
-  memset(buf, fill, WIN_W);
-  buf[0] = l;
-  buf[WIN_W - 1] = right;
-  buf[WIN_W] = '\0';
-  if (title) {
-    int len = (int)strlen(title);
-    if (len > WIN_W - 6) {
-      len = WIN_W - 6;
-    }
-    int start = (WIN_W - len - 2) / 2;
-    buf[start] = ' ';
-    memcpy(buf + start + 1, title, len);
-    buf[start + 1 + len] = ' ';
-  }
-  at(r, WIN_COL, "\x1b[0;96;44m%s", buf);
-}
-
-/* Text row of the password window: frame, `text` (may hold colors), pad. */
-static void text_row(int r, const char *color, const char *text) {
-  int w = WIN_W - 4;
-  at(r, WIN_COL, "\x1b[0;96;44m\xBA \x1b[%sm%-*.*s\x1b[96m \xBA", color, w, w, text);
-}
-
 static void draw_window(void) {
   char name[NET_SSID_MAX + 1];
   printable(s_aps[s_list.sel].ssid, name, sizeof(name));
-  frame_row(WIN_ROW, '\xC9', '\xCD', '\xBB', name); /* ╔═╗ */
-  text_row(WIN_ROW + 1, "97;44", s_aps[s_list.sel].open ? "Password (open network)" : "Password");
+  macjr_tty_window_draw(s_tty, &s_win, name);
+  macjr_tty_window_text(s_tty, &s_win, 0, "97", false,
+                        s_aps[s_list.sel].open ? "Password (open network)" : "Password");
   /* the end of the password if it is longer than the row, then the cursor */
   int w = WIN_W - 5;
   size_t len = strlen(s_pass);
   const char *shown = len > (size_t)w ? s_pass + len - w : s_pass;
   char field[NET_PASS_MAX + 2];
   snprintf(field, sizeof(field), "%s%s", shown, s_screen == SCREEN_PASSWORD ? "_" : "");
-  text_row(WIN_ROW + 2, "93;44", field);
-  text_row(WIN_ROW + 3, "97;44", "");
-  text_row(WIN_ROW + 4, s_msg ? s_msg : "97;44", s_msg ? s_msg_buf : "");
-  frame_row(WIN_ROW + 5, '\xC8', '\xCD', '\xBC', NULL); /* ╚═╝ */
+  macjr_tty_window_text(s_tty, &s_win, 1, "93", false, field);
+  if (s_msg) {
+    macjr_tty_window_text(s_tty, &s_win, 3, s_msg, false, s_msg_buf);
+  }
 }
 
 static void draw_all(void) {
@@ -283,7 +259,7 @@ static void open_window(void) {
   snprintf(s_pass, sizeof(s_pass), "%s", saved ? s_saved_pass : "");
   s_msg = NULL;
   if (saved) {
-    message("90;44", "Saved password");
+    message("90", "Saved password");
   }
   s_screen = SCREEN_PASSWORD;
 }
@@ -291,10 +267,10 @@ static void open_window(void) {
 static void connect(void) {
   const net_ap_t *ap = &s_aps[s_list.sel];
   if (!ap->open && strlen(s_pass) < PASS_MIN) {
-    message("91;44", "At least 8 digits");
+    message("91", "At least 8 digits");
     return;
   }
-  message("93;44", "Connecting...");
+  message("93", "Connecting...");
   draw_all();
   esp_err_t err = net_wifi_connect(ap->ssid, s_pass, CONNECT_MS);
   drain_keys();
@@ -302,17 +278,17 @@ static void connect(void) {
     char ip[16];
     net_wifi_status(NULL, ip);
     snprintf(s_msg_buf, sizeof(s_msg_buf), "Connected, %s", ip);
-    s_msg = "92;44";
+    s_msg = "92";
     save(ap->ssid, s_pass);
     s_screen = SCREEN_DONE;
   } else if (err == ESP_ERR_WIFI_PASSWORD) {
-    message("91;44", "Wrong password");
+    message("91", "Wrong password");
   } else if (err == ESP_ERR_WIFI_SSID) {
-    message("91;44", "Network not found");
+    message("91", "Network not found");
   } else if (err == ESP_ERR_TIMEOUT) {
-    message("91;44", "No answer");
+    message("91", "No answer");
   } else {
-    message("91;44", "Failed to connect");
+    message("91", "Failed to connect");
   }
 }
 
