@@ -26,6 +26,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "keyboard.h"
+#include "net.h"
 #include "sdcard.h"
 #include "tty/window.h"
 #include "usbdev.h"
@@ -148,13 +149,29 @@ static void draw_stats(const cpu_sample_t *prev, const cpu_sample_t *cur) {
 
   uint64_t total, free_bytes;
   if (sdcard_info(&total, &free_bytes) == ESP_OK) {
-    line(12, "\x1b[96mSD     \x1b[97mmounted at %s", SDCARD_MOUNT_POINT);
-    line(13, "\x1b[97m       %lu / %lu MB free", (unsigned long)(free_bytes >> 20),
+    line(11, "\x1b[96mSD     \x1b[97m%lu / %lu MB free", (unsigned long)(free_bytes >> 20),
          (unsigned long)(total >> 20));
   } else {
-    line(12, "\x1b[96mSD     \x1b[97mnot mounted");
-    line(13, "%s", "");
+    line(11, "\x1b[96mSD     \x1b[97mnot mounted");
   }
+
+  char ssid[NET_SSID_MAX + 1], ip[40];
+  uint8_t mac[6];
+  bool online = net_wifi_status(ssid, ip);
+  net_wifi_mac(mac);
+  if (online) {
+    for (char *c = ssid; *c; c++) {
+      if ((unsigned char)*c < 0x20 || (unsigned char)*c >= 0x7F) {
+        *c = '?'; /* the font has no UTF-8 */
+      }
+    }
+    line(12, "\x1b[96mWi-Fi  \x1b[97m%.31s", ssid);
+    line(14, "\x1b[96m  IP   \x1b[97m%s", ip);
+  } else {
+    line(12, "\x1b[96mWi-Fi  \x1b[97mnot connected");
+    line(14, "%s", "");
+  }
+  line(13, "\x1b[96m  MAC  \x1b[97m%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   macjr_display_flush(s_tty);
 }
 

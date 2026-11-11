@@ -4,6 +4,6 @@
 idf_component_register(
   SRCS "net.c"
   INCLUDE_DIRS "."
-  REQUIRES esp_wifi
+  REQUIRES esp_wifi esp_hw_support
   PRIV_REQUIRES esp_netif esp_event nvs_flash freertos
 )

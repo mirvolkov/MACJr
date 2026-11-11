@@ -54,11 +54,15 @@ int net_wifi_scan(net_ap_t *aps, int max);
 esp_err_t net_wifi_connect(const char *ssid, const char *pass, uint32_t timeout_ms);
 
 /* Drop the connection, if any. */
+esp_err_t net_wifi_up(void);
+
 void net_wifi_disconnect(void);
 
 /* True while connected with an IP address; then the network's name goes
  * to `ssid` (NET_SSID_MAX + 1 bytes) and the address, as text, to `ip`
  * (16 bytes). Either may be NULL. */
+void net_wifi_mac(uint8_t mac[6]);
+
 bool net_wifi_status(char *ssid, char *ip);
 
 #ifdef __cplusplus

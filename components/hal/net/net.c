@@ -13,6 +13,7 @@
 
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "freertos/FreeRTOS.h"
@@ -258,6 +259,16 @@ esp_err_t net_wifi_connect(const char *ssid, const char *pass, uint32_t timeout_
   return err;
 }
 
+/* Start Wi-Fi (STA) without connecting, so the radio/PHY is up. Idempotent.
+ * The SDR capture HAL (espsdr) needs the PHY running. */
+esp_err_t net_wifi_up(void) {
+  esp_err_t err = enter();
+  if (err == ESP_OK) {
+    leave();
+  }
+  return err;
+}
+
 void net_wifi_disconnect(void) {
   if (enter() != ESP_OK) {
     return;
@@ -265,6 +276,11 @@ void net_wifi_disconnect(void) {
   disconnect();
   s_ssid[0] = '\0';
   leave();
+}
+
+/* The station MAC (from eFuse; works even when Wi-Fi is down). */
+void net_wifi_mac(uint8_t mac[6]) {
+  esp_read_mac(mac, ESP_MAC_WIFI_STA);
 }
 
 bool net_wifi_status(char *ssid, char *ip) {

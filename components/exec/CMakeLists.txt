@@ -4,6 +4,6 @@
 idf_component_register(
   SRCS "exec.c" "exports.c"
   INCLUDE_DIRS "." "../../sdk/include"
-  REQUIRES display keyboard monitor sdcard esp_timer spi_flash db mic sdr usbdev png ir net speaker
+  REQUIRES display keyboard monitor sdcard esp_timer spi_flash db mic sdr usbdev png ir net speaker espsdr
   PRIV_REQUIRES espressif__elf_loader
 )
