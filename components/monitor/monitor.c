@@ -16,6 +16,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "driver/temperature_sensor.h"
@@ -28,6 +29,7 @@
 #include "keyboard.h"
 #include "net.h"
 #include "sdcard.h"
+#include "tty/list.h"
 #include "tty/window.h"
 #include "usbdev.h"
 
@@ -100,60 +102,83 @@ static void line(int r, const char *fmt, ...) {
   out("\x1b[K");
 }
 
-static void cpu_line(int r, int core, int pct) {
+/* The page is built as a list of lines and shown through the scrollable
+ * list widget (rows 2-14, scroll bar in the last column), so it can hold
+ * more than fits on screen. */
+#define MON_VIEW_ROW 2
+#define MON_VIEW_H   13
+#define MON_MAX_LINES 32
+static char s_lines[MON_MAX_LINES][128];
+static int s_nlines;
+static macjr_tty_list_t s_list;
+
+static void addline(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void addline(const char *fmt, ...) {
+  if (s_nlines >= MON_MAX_LINES) {
+    return;
+  }
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(s_lines[s_nlines], sizeof(s_lines[0]), fmt, ap);
+  va_end(ap);
+  s_nlines++;
+}
+
+static void blank(void) {
+  if (s_nlines < MON_MAX_LINES) {
+    s_lines[s_nlines++][0] = '\0';
+  }
+}
+
+static void cpu_line(int core, int pct) {
   char bar[BAR_W * sizeof(CH_FULL) + 1];
   int fill = (pct * BAR_W + 50) / 100;
   bar[0] = '\0';
   for (int i = 0; i < BAR_W; i++) {
     strcat(bar, i < fill ? CH_FULL : CH_SHADE);
   }
-  /* green / yellow / red by load */
   const char *color = pct < 50 ? "\x1b[92m" : (pct < 80 ? "\x1b[93m" : "\x1b[91m");
-  line(r, "\x1b[97mCPU%d %s%s\x1b[97m %3d%%", core, color, bar, pct);
+  addline("\x1b[97mCPU%d %s%s\x1b[97m %3d%%", core, color, bar, pct);
 }
 
-static void mem_line(int r, const char *name, uint32_t caps) {
+static void mem_line(const char *name, uint32_t caps) {
   size_t total = heap_caps_get_total_size(caps);
   size_t used = total - heap_caps_get_free_size(caps);
-  line(r, "\x1b[97m%-6s %5u / %5u KB used", name, (unsigned)(used / 1024), (unsigned)(total / 1024));
+  addline("\x1b[97m%-6s %5u / %5u KB used", name, (unsigned)(used / 1024), (unsigned)(total / 1024));
 }
 
-static void draw_static(void) {
-  out("\x1b[?25l\x1b[0m\x1b[2J");
-  macjr_tty_header(s_tty, "MacJr system monitor");
-  line(15, "\x1b[90m Press F and K together to close");
-}
-
-static void draw_stats(const cpu_sample_t *prev, const cpu_sample_t *cur) {
+/* Rebuild the page's lines from the current stats. */
+static void build_lines(const cpu_sample_t *prev, const cpu_sample_t *cur) {
+  s_nlines = 0;
   for (int c = 0; c < portNUM_PROCESSORS; c++) {
-    cpu_line(3 + c, c, cpu_load(prev, cur, c));
+    cpu_line(c, cpu_load(prev, cur, c));
   }
-
-  line(6, "\x1b[96mMemory");
-  mem_line(7, "SRAM", MALLOC_CAP_INTERNAL);
+  blank();
+  addline("\x1b[96mMemory");
+  mem_line("SRAM", MALLOC_CAP_INTERNAL);
 #if CONFIG_SPIRAM
   if (esp_psram_is_initialized()) {
-    mem_line(8, "PSRAM", MALLOC_CAP_SPIRAM);
+    mem_line("PSRAM", MALLOC_CAP_SPIRAM);
   } else
 #endif
   {
-    line(8, "\x1b[97mPSRAM  disabled");
+    addline("\x1b[97mPSRAM  disabled");
   }
+  blank();
 
   float celsius;
   if (s_tsens && temperature_sensor_get_celsius(s_tsens, &celsius) == ESP_OK) {
-    line(10, "\x1b[96mTemp   \x1b[97m%.1f C", celsius);
+    addline("\x1b[96mTemp   \x1b[97m%.1f C", celsius);
   } else {
-    line(10, "\x1b[96mTemp   \x1b[97mn/a");
+    addline("\x1b[96mTemp   \x1b[97mn/a");
   }
-
-  uint64_t total, free_bytes;
-  if (sdcard_info(&total, &free_bytes) == ESP_OK) {
-    line(11, "\x1b[96mSD     \x1b[97m%lu / %lu MB free", (unsigned long)(free_bytes >> 20),
-         (unsigned long)(total >> 20));
-  } else {
-    line(11, "\x1b[96mSD     \x1b[97mnot mounted");
+  time_t now = time(NULL);
+  struct tm tm;
+  localtime_r(&now, &tm);
+  if (tm.tm_year >= 120) { /* year >= 2020: the clock has been set (NTP) */
+    addline("\x1b[96mTime   \x1b[97m%02d:%02d:%02d", tm.tm_hour, tm.tm_min, tm.tm_sec);
   }
+  blank();
 
   char ssid[NET_SSID_MAX + 1], ip[40];
   uint8_t mac[6];
@@ -165,13 +190,41 @@ static void draw_stats(const cpu_sample_t *prev, const cpu_sample_t *cur) {
         *c = '?'; /* the font has no UTF-8 */
       }
     }
-    line(12, "\x1b[96mWi-Fi  \x1b[97m%.31s", ssid);
-    line(14, "\x1b[96m  IP   \x1b[97m%s", ip);
+    addline("\x1b[96mWi-Fi  \x1b[97m%.31s", ssid);
   } else {
-    line(12, "\x1b[96mWi-Fi  \x1b[97mnot connected");
-    line(14, "%s", "");
+    addline("\x1b[96mWi-Fi  \x1b[97mnot connected");
   }
-  line(13, "\x1b[96m  MAC  \x1b[97m%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  addline("\x1b[96m  MAC  \x1b[97m%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  if (online) {
+    addline("\x1b[96m  IP   \x1b[97m%s", ip);
+  }
+  blank();
+
+  uint64_t total, free_bytes;
+  if (sdcard_info(&total, &free_bytes) == ESP_OK) {
+    addline("\x1b[96mSD     \x1b[97m%lu / %lu MB free", (unsigned long)(free_bytes >> 20),
+            (unsigned long)(total >> 20));
+  } else {
+    addline("\x1b[96mSD     \x1b[97mnot mounted");
+  }
+}
+
+static void mon_item(int index, char *text, size_t len, void *ctx) {
+  (void)ctx;
+  snprintf(text, len, "%s", index < s_nlines ? s_lines[index] : "");
+}
+
+static void draw_static(void) {
+  out("\x1b[?25l\x1b[0m\x1b[2J");
+  macjr_tty_header(s_tty, "MacJr system monitor");
+  line(15, "\x1b[90m F+K close   P->x / x->P scroll");
+}
+
+/* Rebuild the lines and redraw the scrollable page. */
+static void draw_stats(const cpu_sample_t *prev, const cpu_sample_t *cur) {
+  build_lines(prev, cur);
+  macjr_tty_list_set_count(&s_list, s_nlines);
+  macjr_tty_list_draw(s_tty, &s_list);
   macjr_display_flush(s_tty);
 }
 
@@ -187,6 +240,7 @@ static void run_monitor(int fd) {
 
   fcntl(fd, F_SETFL, O_NONBLOCK);
   draw_static();
+  macjr_tty_list_init(&s_list, MON_VIEW_ROW, 1, 40, MON_VIEW_H, mon_item, NULL);
   cpu_sample_t prev, cur;
   cpu_sample(&prev);
   vTaskDelay(pdMS_TO_TICKS(100)); /* first CPU figures after 100 ms, not 1 s */
@@ -203,9 +257,13 @@ static void run_monitor(int fd) {
     if (read(fd, &key, 1) == 1) {
       if (key == MONITOR_KEY) {
         break;
-      }
-      if (key == SCREENSHOT_KEY) {
+      } else if (key == SCREENSHOT_KEY) {
         take_screenshot();
+      } else if (key == KEY_MK_P_TO_X || key == KEY_MK_X_TO_P) {
+        if (macjr_tty_list_move(&s_list, key == KEY_MK_P_TO_X ? -1 : 1)) {
+          macjr_tty_list_draw(s_tty, &s_list);
+          macjr_display_flush(s_tty);
+        }
       }
     }
     vTaskDelay(pdMS_TO_TICKS(POLL_MS));

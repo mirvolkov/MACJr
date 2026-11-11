@@ -90,6 +90,6 @@ direct_dependencies:
 - espressif/elf_loader
 - espressif/esp-dsp
 - espressif/usb_device_uac
-manifest_hash: eb2ae7431b94f804a70deddc3d2aa75799ce8100f0285e336f5076ffd475853c
+manifest_hash: 3c4c302d96cdb7bf486a2a679605a4f2dcbf589a528f708a81c0d86a94b3ebed
 target: esp32s3
 version: 3.0.0
