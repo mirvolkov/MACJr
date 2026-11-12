@@ -57,6 +57,20 @@ When a program ends, the navigator comes back to the same place. After a
 reboot it opens the last directory again, on the last program started from
 it.
 
+## A spectrogram from the Wi-Fi radio
+
+<img src="images/SHOT0013.PNG" alt="A full-screen MACJr spectrogram: a blue-to-red waterfall of the 2.4 GHz band with bright vertical traces, over a spectrum graph at the top" width="480">
+
+`ESPSDR.ELF` turns the ESP32-S3's own 2.4 GHz Wi-Fi receiver into a small
+software-defined radio. The chip's PHY has a factory debug "dump engine" that
+copies raw complex IQ from the receiver's ADC straight into a block of SRAM.
+The firmware reserves that block at boot, puts the radio into promiscuous RX
+with a forced gain, triggers a one-shot capture and hands the samples back; the
+program FFTs them into an averaged periodogram and paints a scrolling
+waterfall, 16 MHz wide around channel 1, on the display. It is one of the few
+programs allowed to draw on the screen directly instead of through the console.
+The radio is borrowed from normal Wi-Fi only while the program runs. Cx exits.
+
 ## The journey
 
 It started with the keyboard. The MK-52's 32 keys went to an MCP23018
@@ -114,10 +128,17 @@ Python wanted keys the calculator doesn't have, so F and А↑ turn the USB
 port into a host for a real keyboard, through the host side of the same
 TinyUSB stack.
 
-So far this is step one, full hardware support. The radio is unfinished,
-because the USB microphone never worked well. Ahead lie the kernel, with
-processes, memory and file systems, then a standard library, a cross-compiler
-and more programs.
+Then the board picked up a radio it already had. The ESP32-S3's Wi-Fi
+receiver can dump its raw ADC samples into SRAM through a factory debug
+engine, documented by the ESPARGOS esp-sdr project. We reserved that memory
+at boot, drove the PHY into a bare promiscuous-RX state, and turned the
+samples into the full-screen 2.4 GHz spectrogram above, with the capture in
+the firmware and the FFT and waterfall in an ELF.
 
-The full log is in 12 short topic stories, with code and real logs, in
+So far this is step one, full hardware support. The SoftRock radio is
+unfinished, because the USB microphone never worked well. Ahead lie the
+kernel, with processes, memory and file systems, then a standard library, a
+cross-compiler and more programs.
+
+The full log is in 13 short topic stories, with code and real logs, in
 [journey/](journey/).
