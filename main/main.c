@@ -45,23 +45,13 @@ static const char *TAG = "MACJR";
 #define KEY_BEEP_HZ 2000
 #define KEY_BEEP_MS 50
 
-static void wifi_task(void *arg); /* defined below; started on demand by F+БП */
+/* Does the user want Wi-Fi on? Toggled by F+БП (through the monitor); the
+ * Wi-Fi task follows it. Off at boot, so the radio and its ~60 KB of buffers
+ * cost nothing until asked for. */
+static volatile bool s_wifi_want;
 
-/* Start the background Wi-Fi joiner once. Wi-Fi (and its ~60 KB of buffers) is
- * not brought up at boot -- F+БП asks for it, so the firmware pays nothing for
- * the radio until the user wants the network and the NTP clock. */
-static void wifi_start(void) {
-  static bool started;
-  if (started) {
-    return;
-  }
-  started = true;
-  xTaskCreatePinnedToCore(wifi_task, "wifi_join", 4096, NULL, 2, NULL, 0);
-  ESP_LOGI(TAG, "Wi-Fi start requested (F+БП)");
-}
-
-/* Reads /dev/kbrd forever: beeps on every key press, starts Wi-Fi on F+БП, and
- * (DEBUG ONLY) logs the key codes. */
+/* Reads /dev/kbrd forever: beeps on every key press and (DEBUG ONLY) logs
+ * the key codes. */
 static void kbrd_task(void *arg) {
   int fd = open(KBD_DEV_PATH, O_RDONLY);
   if (fd < 0) {
@@ -80,9 +70,6 @@ static void kbrd_task(void *arg) {
     /* one beep per read: keys pressed in the same instant share it */
     speaker_beep(KEY_BEEP_HZ, KEY_BEEP_MS);
     for (ssize_t i = 0; i < n; i++) {
-      if (keys[i] == KEY_MK_F_BP) {
-        wifi_start();
-      }
       ESP_LOGI(TAG, "%s: key %u", KBD_DEV_PATH, keys[i]); /* DEBUG ONLY */
     }
   }
@@ -103,26 +90,44 @@ static void set_time_zone(void) {
 }
 
 #define WIFI_CONNECT_MS 15000
-#define WIFI_RETRY_MS   30000
 
-/* Keep the network the WIFI program saved joined: once started (by F+БП), try
- * now and then every WIFI_RETRY_MS while not connected (the network may come up
- * later, or drop). Only while disconnected, so a connection made by a program
- * is left alone. The saved network is read again each time. */
+/* Follows s_wifi_want (set by F+БП): while wanted and not connected, join the
+ * network the WIFI program saved (reading it each time, so it can change);
+ * while not wanted, stop Wi-Fi and free its buffers. Started lazily on the
+ * first F+БП and then runs for good, polling every POLL_MS so the toggle is
+ * prompt. A connection made by a program is left alone while wanted. */
+#define WIFI_POLL_MS 500
+
 static void wifi_task(void *arg) {
   for (;;) {
-    char ssid[NET_SSID_MAX + 1], pass[NET_PASS_MAX + 1];
-    if (!net_wifi_status(NULL, NULL) && db_read(NET_DB_KEY_SSID, ssid, sizeof(ssid)) == ESP_OK && ssid[0]) {
-      if (db_read(NET_DB_KEY_PASS, pass, sizeof(pass)) != ESP_OK) {
-        pass[0] = '\0';
+    if (s_wifi_want) {
+      char ssid[NET_SSID_MAX + 1], pass[NET_PASS_MAX + 1];
+      if (!net_wifi_status(NULL, NULL) && db_read(NET_DB_KEY_SSID, ssid, sizeof(ssid)) == ESP_OK && ssid[0]) {
+        if (db_read(NET_DB_KEY_PASS, pass, sizeof(pass)) != ESP_OK) {
+          pass[0] = '\0';
+        }
+        esp_err_t err = net_wifi_connect(ssid, pass, WIFI_CONNECT_MS);
+        if (err != ESP_OK) {
+          ESP_LOGW(TAG, "Wi-Fi %s: %s", ssid, esp_err_to_name(err));
+        }
       }
-      esp_err_t err = net_wifi_connect(ssid, pass, WIFI_CONNECT_MS);
-      if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Wi-Fi %s: %s, again in %d s", ssid, esp_err_to_name(err), WIFI_RETRY_MS / 1000);
-      }
+    } else {
+      net_wifi_down(); /* a no-op when already down */
     }
-    vTaskDelay(pdMS_TO_TICKS(WIFI_RETRY_MS));
+    vTaskDelay(pdMS_TO_TICKS(WIFI_POLL_MS));
   }
+}
+
+/* F+БП handler (called from the monitor task): flip the want flag, starting
+ * the Wi-Fi task on the first enable. Returns the new state for the notice. */
+static bool wifi_toggle(void) {
+  static bool task_started;
+  s_wifi_want = !s_wifi_want;
+  if (s_wifi_want && !task_started) {
+    task_started = true;
+    xTaskCreatePinnedToCore(wifi_task, "wifi_join", 4096, NULL, 2, NULL, 0);
+  }
+  return s_wifi_want;
 }
 
 /* A .py file from the navigator runs as UPYTHON.ELF <file>. */
@@ -194,6 +199,7 @@ void app_main(void) {
   ESP_LOGI(TAG, "tty up: %ux%u chars on %ux%u px", ws->ws_col, ws->ws_row, ws->ws_xpixel, ws->ws_ypixel);
 
   start_monitor(tty);
+  monitor_set_wifi_cb(wifi_toggle); /* F+БП toggles Wi-Fi, with a notice */
 
   for (;;) {
     char path[64];

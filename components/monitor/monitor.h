@@ -24,6 +24,11 @@ extern "C" {
  * into /dev/kbrd alongside the MK-52 keys (usb_kbd_start, usbdev.h). */
 #define USB_KBD_KEY KEY_MK_F_A_UP
 
+/* Key that turns Wi-Fi on or off: MK-52 F and БП together. A notice window
+ * shows the new state. The handler is supplied by the firmware via
+ * monitor_set_wifi_cb (the radio/db policy lives there, not here). */
+#define WIFI_KEY KEY_MK_F_BP
+
 /* Start the monitor task. From then on MONITOR_KEY, pressed at any time,
  * saves the screen of `tty` and shows CPU load per core, internal RAM and
  * PSRAM usage, chip temperature and SD card status, refreshed every second.
@@ -50,6 +55,12 @@ bool monitor_is_open(void);
  * outside the tty, or that changed while the monitor was open. */
 typedef void (*monitor_redraw_cb_t)(void *ctx);
 void monitor_set_redraw_cb(monitor_redraw_cb_t cb, void *ctx);
+
+/* Toggle Wi-Fi: called (from the monitor task) when WIFI_KEY is pressed.
+ * Returns the new state (true = Wi-Fi now on). The monitor shows a notice
+ * with the result. Without a callback set, WIFI_KEY does nothing. */
+typedef bool (*monitor_wifi_cb_t)(void);
+void monitor_set_wifi_cb(monitor_wifi_cb_t cb);
 
 #ifdef __cplusplus
 }

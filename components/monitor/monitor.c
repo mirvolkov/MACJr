@@ -335,6 +335,21 @@ static void toggle_usb_kbd(void) {
   }
 }
 
+/* WIFI_KEY: toggle Wi-Fi through the firmware's callback, and say so. */
+static monitor_wifi_cb_t s_wifi_cb;
+
+static void toggle_wifi(void) {
+  if (!s_wifi_cb) {
+    return;
+  }
+  bool on = s_wifi_cb();
+  notice("Wi-Fi", on ? "On: joining the network" : "Off", "97");
+}
+
+void monitor_set_wifi_cb(monitor_wifi_cb_t cb) {
+  s_wifi_cb = cb;
+}
+
 void monitor_set_enabled(bool on) {
   s_enabled = on;
 }
@@ -367,6 +382,8 @@ static void monitor_task(void *arg) {
       take_screenshot();
     } else if (key == USB_KBD_KEY) {
       toggle_usb_kbd();
+    } else if (key == WIFI_KEY) {
+      toggle_wifi();
     }
   }
 }

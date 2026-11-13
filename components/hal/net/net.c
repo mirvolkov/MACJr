@@ -39,6 +39,7 @@ static uint8_t s_reason;    /* of the last disconnect */
 static char s_ssid[NET_SSID_MAX + 1];
 static char s_ip[16];
 static bool s_sntp;         /* SNTP started */
+static esp_netif_t *s_netif;/* the default STA netif, kept for teardown */
 
 static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_CONNECTED) {
@@ -82,8 +83,11 @@ static esp_err_t start(void) {
       err = ESP_OK; /* someone created it already */
     }
   }
-  if (err == ESP_OK && !esp_netif_create_default_wifi_sta()) {
-    err = ESP_FAIL;
+  if (err == ESP_OK) {
+    s_netif = esp_netif_create_default_wifi_sta();
+    if (!s_netif) {
+      err = ESP_FAIL;
+    }
   }
   if (err == ESP_OK) {
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -266,6 +270,36 @@ void net_wifi_disconnect(void) {
   disconnect();
   s_ssid[0] = '\0';
   leave();
+}
+
+/* Stop Wi-Fi and free its buffers (undo start()); a later connect brings it
+ * back up. Safe to call when Wi-Fi is already down. */
+void net_wifi_down(void) {
+  if (!s_lock) {
+    return; /* never started */
+  }
+  xSemaphoreTake(s_lock, portMAX_DELAY);
+  if (s_up) {
+    if (s_sntp) {
+      esp_netif_sntp_deinit();
+      s_sntp = false;
+    }
+    esp_wifi_disconnect();
+    esp_wifi_stop();
+    esp_event_handler_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, on_event);
+    esp_event_handler_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, on_event);
+    esp_wifi_deinit();
+    if (s_netif) {
+      esp_netif_destroy_default_wifi(s_netif);
+      s_netif = NULL;
+    }
+    s_up = false;
+    s_connected = false;
+    s_ssid[0] = '\0';
+    s_ip[0] = '\0';
+    ESP_LOGI(TAG, "Wi-Fi station stopped");
+  }
+  xSemaphoreGive(s_lock);
 }
 
 /* The station MAC (from eFuse; works even when Wi-Fi is down). */

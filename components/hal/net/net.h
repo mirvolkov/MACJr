@@ -56,6 +56,9 @@ esp_err_t net_wifi_connect(const char *ssid, const char *pass, uint32_t timeout_
 /* Drop the connection, if any. */
 void net_wifi_disconnect(void);
 
+/* Stop Wi-Fi and free its buffers; a later connect brings it back up. */
+void net_wifi_down(void);
+
 /* True while connected with an IP address; then the network's name goes
  * to `ssid` (NET_SSID_MAX + 1 bytes) and the address, as text, to `ip`
  * (16 bytes). Either may be NULL. */
