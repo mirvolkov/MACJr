@@ -52,6 +52,7 @@ green, images yellow, sounds purple and everything else grey. Hidden files are l
 | F + Cx | Kill the running program |
 | F + ↑↓ | Save a screenshot to the SD card, like the one above |
 | F + А↑ | USB keyboard on / off: a keyboard plugged into the USB port types too |
+| F + БП | Start Wi-Fi: joins the saved network and sets the clock over NTP |
 
 When a program ends, the navigator comes back to the same place. After a
 reboot it opens the last directory again, on the last program started from

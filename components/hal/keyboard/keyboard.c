@@ -105,6 +105,7 @@ static const kbd_chord_t s_chords[] = {
     { KEY_MK_F, KEY_ESC, KEY_MK_F_ESC },
     { KEY_MK_F, KEY_MK_UPDOWN, KEY_MK_F_UPDOWN },
     { KEY_MK_F, KEY_MK_A_UP, KEY_MK_F_A_UP },
+    { KEY_MK_F, KEY_MK_BP, KEY_MK_F_BP },
 };
 
 typedef struct {

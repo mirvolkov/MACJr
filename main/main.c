@@ -1,8 +1,9 @@
 /*
  * Firmware entry point: brings up the board HALs (SD card, keyboard, IR
- * receiver, ST7789 display), sets the time zone, keeps the Wi-Fi network
- * saved by the WIFI program joined in the background (the clock is then
- * set over NTP), starts the system monitor (keys F+K), then loops over the
+ * receiver, ST7789 display), sets the time zone, and (when the user presses
+ * F+БП) keeps the Wi-Fi network saved by the WIFI program joined in the
+ * background, with the clock then set over NTP -- the radio and its buffers
+ * stay off until asked for. It starts the system monitor (keys F+K), then loops over the
  * file navigator (components/boot) and the program picked there: an ELF
  * file on the SD card, loaded and run by components/exec, or a .py
  * script, run by /BIN/UPYTHON.ELF (apps/: IDE demo,
@@ -44,8 +45,23 @@ static const char *TAG = "MACJR";
 #define KEY_BEEP_HZ 2000
 #define KEY_BEEP_MS 50
 
-/* Reads /dev/kbrd forever: beeps on every key press and (DEBUG ONLY) logs
- * the key codes. */
+static void wifi_task(void *arg); /* defined below; started on demand by F+БП */
+
+/* Start the background Wi-Fi joiner once. Wi-Fi (and its ~60 KB of buffers) is
+ * not brought up at boot -- F+БП asks for it, so the firmware pays nothing for
+ * the radio until the user wants the network and the NTP clock. */
+static void wifi_start(void) {
+  static bool started;
+  if (started) {
+    return;
+  }
+  started = true;
+  xTaskCreatePinnedToCore(wifi_task, "wifi_join", 4096, NULL, 2, NULL, 0);
+  ESP_LOGI(TAG, "Wi-Fi start requested (F+БП)");
+}
+
+/* Reads /dev/kbrd forever: beeps on every key press, starts Wi-Fi on F+БП, and
+ * (DEBUG ONLY) logs the key codes. */
 static void kbrd_task(void *arg) {
   int fd = open(KBD_DEV_PATH, O_RDONLY);
   if (fd < 0) {
@@ -64,6 +80,9 @@ static void kbrd_task(void *arg) {
     /* one beep per read: keys pressed in the same instant share it */
     speaker_beep(KEY_BEEP_HZ, KEY_BEEP_MS);
     for (ssize_t i = 0; i < n; i++) {
+      if (keys[i] == KEY_MK_F_BP) {
+        wifi_start();
+      }
       ESP_LOGI(TAG, "%s: key %u", KBD_DEV_PATH, keys[i]); /* DEBUG ONLY */
     }
   }
@@ -86,10 +105,10 @@ static void set_time_zone(void) {
 #define WIFI_CONNECT_MS 15000
 #define WIFI_RETRY_MS   30000
 
-/* Keep the network the WIFI program saved joined: try at boot, then
- * every WIFI_RETRY_MS while not connected (the network may come up later,
- * or drop). Only while disconnected, so a connection made by a program is
- * left alone. The saved network is read again each time. */
+/* Keep the network the WIFI program saved joined: once started (by F+БП), try
+ * now and then every WIFI_RETRY_MS while not connected (the network may come up
+ * later, or drop). Only while disconnected, so a connection made by a program
+ * is left alone. The saved network is read again each time. */
 static void wifi_task(void *arg) {
   for (;;) {
     char ssid[NET_SSID_MAX + 1], pass[NET_PASS_MAX + 1];
@@ -140,7 +159,7 @@ void app_main(void) {
   }
 
   set_time_zone();
-  xTaskCreatePinnedToCore(wifi_task, "wifi_join", 4096, NULL, 2, NULL, 0);
+  /* Wi-Fi is not started here: F+БП brings it up on demand (see wifi_start). */
 
   if (speaker_init() != ESP_OK) {
     ESP_LOGW(TAG, "speaker_init failed, continuing without sound");

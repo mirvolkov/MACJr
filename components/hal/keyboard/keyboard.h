@@ -92,6 +92,7 @@ extern "C" {
 #define KEY_MK_F_ESC    161 /* F and Cx: kill the running program */
 #define KEY_MK_F_UPDOWN 162 /* F and ↑↓: screenshot */
 #define KEY_MK_F_A_UP   163 /* F and А↑: USB keyboard on / off */
+#define KEY_MK_F_BP     164 /* F and БП: start Wi-Fi */
 
 /* Chords belong to the system: programs get them too, and skip them. */
 #define KBD_IS_CHORD(code) ((code) >= KEY_MK_F_K)
