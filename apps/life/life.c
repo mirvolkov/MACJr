@@ -1,11 +1,13 @@
 /*
- * LIFE.ELF -- Conway's Game of Life on the full 320x240 panel.
+ * LIFE.ELF -- Conway's Game of Life on the full 320x240 panel, with a
+ * bit-parallel 32-bit SWAR engine (life_swar.c): one bit per cell, 32 cells
+ * advanced per machine word. (Vector-unit and matrix-multiply backends were
+ * tried too; this scalar SWAR one was fastest, so it is the keeper.)
  *
- * The engine is bit-parallel SWAR (life_swar.c): one bit per cell, 32 cells
- * advanced per word. Each generation is packed into the HAL's 1-bpp mask and
- * blitted in a single call -- the panel maps bit=1 to the live colour, so no
- * RGB buffer is needed. Draws on the display HAL directly (like the PNG viewer
- * and the SDR spectrogram), not through the tty.
+ * Each generation is packed into the HAL's 1-bpp mask and blitted in a single
+ * call -- the panel maps bit=1 to the live colour, so no RGB buffer is needed.
+ * Draws on the display HAL directly (like the PNG viewer and the SDR
+ * spectrogram), not through the tty.
  *
  *   argv[1]  seed sparseness s: a 2^-s live fraction (1..6, default 3 -> 12.5%)
  *
@@ -18,6 +20,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 

@@ -36,6 +36,9 @@
 #include "monitor.h"
 #include "net.h"
 #include "espsdr.h"
+
+/* built-in font (components/hal/display/tty/src/font_builtin.c) */
+extern const unsigned char macjr_font_builtin_8x16[256][16];
 #include "png.h"
 #include "sdcard.h"
 #include "sdr.h"
@@ -56,6 +59,7 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(macjr_tty_write),
   ESP_ELFSYM_EXPORT(macjr_tty_header),
   ESP_ELFSYM_EXPORT(macjr_tty_winsize),
+  ESP_ELFSYM_EXPORT(macjr_font_builtin_8x16),
   ESP_ELFSYM_EXPORT(macjr_tty_display),
   ESP_ELFSYM_EXPORT(macjr_display_flush),
   ESP_ELFSYM_EXPORT(macjr_tty_list_init),
@@ -76,6 +80,9 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(db_read),
   ESP_ELFSYM_EXPORT(db_update),
   ESP_ELFSYM_EXPORT(db_watch),
+  ESP_ELFSYM_EXPORT(speaker_write),
+  ESP_ELFSYM_EXPORT(speaker_set_sample_rate),
+  ESP_ELFSYM_EXPORT(speaker_sample_rate),
   ESP_ELFSYM_EXPORT(speaker_channel_name),
   ESP_ELFSYM_EXPORT(speaker_set_volume),
   ESP_ELFSYM_EXPORT(speaker_volume),

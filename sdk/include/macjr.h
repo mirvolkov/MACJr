@@ -46,6 +46,12 @@ extern "C" {
 /* The program's entry point, as the loader calls it. */
 typedef int (*macjr_main_t)(int argc, char *argv[], macjr_tty_t *tty);
 
+/* The firmware's built-in 8x16 font (bold ASCII + CP866), for programs that
+ * draw text on the display HAL themselves: glyph c is macjr_font_builtin_8x16[c],
+ * 16 rows of one byte, MSB = leftmost pixel. Draw a glyph at (x, y) with
+ * display->blit_1bpp_mask(display, x, y, 8, 16, 1, macjr_font_builtin_8x16[c], fg, bg). */
+extern const unsigned char macjr_font_builtin_8x16[256][16];
+
 /* Block until a key is pressed and return its code (KEY_* in the
  * firmware's keyboard.h; MK-52 keys are 128-159, Cx comes as SYS_KEY_ESC). */
 int sys_getkey(void);

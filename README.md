@@ -143,12 +143,21 @@ full-adders, 32 cells per machine word. The whole 320x240 board advances in
 a fraction of a millisecond, drawn straight to the panel. Two familiar traps
 surfaced on the way: hammering the hardware random seeded the grid in two
 black seconds, and a few kilobytes of resident buffers in internal RAM were
-enough to starve the next program's stack.
+enough to starve the next program's stack. Vector-unit and matrix-multiply
+versions were written and timed against it anyway; the plain register won, so
+it is the one that stayed.
+
+Then the speaker got files to play. A WAV player streams to the speaker
+through a ring of buffers, parsing the RIFF header by reading forward because
+the program loader exports no seek. Pressing В↑ on a sound file in the
+navigator launches it, the way В↑ on a script launches Python. An MP3 decoder
+was fitted and then taken back out, leaving a small WAV player and a reusable
+audio pipeline.
 
 So far this is step one, full hardware support. The SoftRock radio is
 unfinished, because the USB microphone never worked well. Ahead lie the
 kernel, with processes, memory and file systems, then a standard library, a
 cross-compiler and more programs.
 
-The full log is in 14 short topic stories, with code and real logs, in
+The full log is in 15 short topic stories, with code and real logs, in
 [journey/](journey/).

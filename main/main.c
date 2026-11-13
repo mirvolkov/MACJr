@@ -114,6 +114,18 @@ static bool is_script(const char *path) {
   return dot && strcasecmp(dot, ".py") == 0;
 }
 
+/* A sound file from the navigator plays as AUDIOPLAYER.ELF <file>. */
+#define PLAYER_PATH EXEC_BIN_DIR "/AUDIOPLAYER.ELF"
+
+static bool is_audio(const char *path) {
+  const char *dot = strrchr(path, '.');
+  if (!dot) {
+    return false;
+  }
+  return strcasecmp(dot, ".wav") == 0 || strcasecmp(dot, ".mp3") == 0 ||
+         strcasecmp(dot, ".ogg") == 0 || strcasecmp(dot, ".flac") == 0;
+}
+
 static void start_monitor(macjr_tty_t *tty) {
   if (monitor_start(tty) != ESP_OK) {
     ESP_LOGW(TAG, "monitor_start failed");
@@ -172,6 +184,8 @@ void app_main(void) {
       exec_launch_main(tty, builtin->name, builtin->main);
     } else if (is_script(path)) {
       exec_launch_with(tty, PYTHON_PATH, path);
+    } else if (is_audio(path)) {
+      exec_launch_with(tty, PLAYER_PATH, path);
     } else {
       exec_launch(tty, path);
     }
