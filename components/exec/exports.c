@@ -35,7 +35,6 @@
 #include "mic.h"
 #include "monitor.h"
 #include "net.h"
-#include "espsdr.h"
 
 /* built-in font (components/hal/display/tty/src/font_builtin.c) */
 extern const unsigned char macjr_font_builtin_8x16[256][16];
@@ -98,10 +97,6 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(net_wifi_connect),
   ESP_ELFSYM_EXPORT(net_wifi_disconnect),
   ESP_ELFSYM_EXPORT(net_wifi_status),
-  ESP_ELFSYM_EXPORT(espsdr_start),
-  ESP_ELFSYM_EXPORT(espsdr_tune),
-  ESP_ELFSYM_EXPORT(espsdr_snapshot),
-  ESP_ELFSYM_EXPORT(espsdr_stop),
   ESP_ELFSYM_EXPORT(mic_init),
   ESP_ELFSYM_EXPORT(mic_uac_start),
   ESP_ELFSYM_EXPORT(sdr_init),

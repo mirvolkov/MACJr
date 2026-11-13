@@ -15,7 +15,6 @@ list(APPEND EXTRA_COMPONENT_DIRS
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/keyboard"
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/i2c_bus"
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/sdr"
-  "${CMAKE_CURRENT_LIST_DIR}/components/hal/espsdr"
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/usbdev"
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/ir"
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/net"

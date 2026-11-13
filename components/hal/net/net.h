@@ -54,8 +54,6 @@ int net_wifi_scan(net_ap_t *aps, int max);
 esp_err_t net_wifi_connect(const char *ssid, const char *pass, uint32_t timeout_ms);
 
 /* Drop the connection, if any. */
-esp_err_t net_wifi_up(void);
-
 void net_wifi_disconnect(void);
 
 /* True while connected with an IP address; then the network's name goes

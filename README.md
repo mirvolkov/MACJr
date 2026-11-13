@@ -71,6 +71,10 @@ waterfall, 16 MHz wide around channel 1, on the display. It is one of the few
 programs allowed to draw on the screen directly instead of through the console.
 The radio is borrowed from normal Wi-Fi only while the program runs. Cx exits.
 
+Keeping it loadable costs a fixed 64 KB of internal SRAM, reserved at boot
+whether or not it runs, so it now lives on the **`esp-sdr`** branch rather than
+on master (see journey story 16).
+
 ## The journey
 
 It started with the keyboard. The MK-52's 32 keys went to an MCP23018
@@ -159,5 +163,5 @@ unfinished, because the USB microphone never worked well. Ahead lie the
 kernel, with processes, memory and file systems, then a standard library, a
 cross-compiler and more programs.
 
-The full log is in 15 short topic stories, with code and real logs, in
+The full log is in 16 short topic stories, with code and real logs, in
 [journey/](journey/).
