@@ -135,10 +135,20 @@ at boot, drove the PHY into a bare promiscuous-RX state, and turned the
 samples into the full-screen 2.4 GHz spectrogram above, with the capture in
 the firmware and the FFT and waterfall in an ELF.
 
+Then a game asked a hardware question. Conway's Game of Life is a 3x3
+convolution plus a threshold, so it looked like a job for the chip's vector
+"AI" instructions. It isn't: for a one-bit automaton the fastest path is to
+pack the grid one bit per cell and count all eight neighbours with bitwise
+full-adders, 32 cells per machine word. The whole 320x240 board advances in
+a fraction of a millisecond, drawn straight to the panel. Two familiar traps
+surfaced on the way: hammering the hardware random seeded the grid in two
+black seconds, and a few kilobytes of resident buffers in internal RAM were
+enough to starve the next program's stack.
+
 So far this is step one, full hardware support. The SoftRock radio is
 unfinished, because the USB microphone never worked well. Ahead lie the
 kernel, with processes, memory and file systems, then a standard library, a
 cross-compiler and more programs.
 
-The full log is in 13 short topic stories, with code and real logs, in
+The full log is in 14 short topic stories, with code and real logs, in
 [journey/](journey/).
