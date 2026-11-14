@@ -70,9 +70,6 @@ esp_err_t sdcard_init(void)
     };
 
     sdmmc_host_t host_config = SDSPI_HOST_DEFAULT();
-    host_config.max_freq_khz = SDMMC_FREQ_HIGHSPEED; /* 40 MHz; default is 20. Speeds up file reads
-                                                        (image loads). Dial back if the card fails to
-                                                        mount or throws CRC errors on this wiring. */
 
     ret = esp_vfs_fat_sdspi_mount(SDCARD_MOUNT_POINT, &host_config, &s_slot_config, &mount_config, &s_card);
     if (ret != ESP_OK) {
@@ -112,7 +109,6 @@ esp_err_t sdcard_open_raw(sdmmc_card_t **out)
         return ret;
     }
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-    host.max_freq_khz = SDMMC_FREQ_HIGHSPEED; /* 40 MHz, matching the mount path */
     sdspi_dev_handle_t dev;
     ret = sdspi_host_init();
     if (ret == ESP_OK) {
