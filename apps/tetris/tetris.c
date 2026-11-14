@@ -1,8 +1,8 @@
 /*
- * TETRIS.ELF -- Tetris on the full 320x240 panel (landscape). A 10x20 well on
- * the left, a side panel (next piece, score, lines, level) on the right. Draws
- * on the display HAL directly (an RGB framebuffer blitted in one call, like the
- * Life and SDR apps), not through the tty.
+ * TETRIS.ELF -- Tetris in the text console (landscape 40x15). A console app:
+ * it draws only through the tty, with CP866 block and box-drawing glyphs and
+ * ANSI colour. A 10x13 well on the left (two characters per cell, so the cells
+ * look square), a status panel on the right.
  *
  * Keys (MK-52 digits): 4 left, 6 right, 2 soft-drop, 5 rotate; В↑ hard-drop,
  * Cx exit. After a game over, В↑ starts again.
@@ -19,87 +19,43 @@
 #include "macjr.h"
 #include "keyboard.h"
 #include "monitor.h"
+#include "tty/tty.h"
 
-#define SW 320
-#define SH 240
+#define GW 10 /* well columns */
+#define GH 13 /* well rows (fits 15 text rows with a border) */
 
-#define GW   10              /* well columns */
-#define GH   20              /* well rows */
-#define CELL 11              /* px per cell */
-#define WX   12              /* well top-left x */
-#define WY   10              /* well top-left y */
+/* CP866 box-drawing + block glyphs */
+#define TL "\xC9"       /* ╔ */
+#define TR "\xBB"       /* ╗ */
+#define BL "\xC8"       /* ╚ */
+#define BR "\xBC"       /* ╝ */
+#define HZ "\xCD"       /* ═ */
+#define VT "\xBA"       /* ║ */
+#define BLK "\xDB\xDB"  /* ██ : one cell, two chars wide */
 
-#define PANEL_X 150
+/* ANSI bright-colour codes per piece: I O T S Z J L */
+static const char *const PCOLOR[7] = {"96", "93", "95", "92", "91", "94", "97"};
 
-#define BG_RGB 0x0a0a12u
-
-static uint8_t *s_fb;        /* SW*SH*3, PSRAM */
-
-/* --- framebuffer primitives --- */
-static void put(int x, int y, uint32_t rgb) {
-    if ((unsigned)x >= SW || (unsigned)y >= SH) {
-        return;
-    }
-    uint8_t *p = s_fb + ((size_t)y * SW + x) * 3;
-    p[0] = (rgb >> 16) & 0xff;
-    p[1] = (rgb >> 8) & 0xff;
-    p[2] = rgb & 0xff;
-}
-
-static void fill(int x, int y, int w, int h, uint32_t rgb) {
-    for (int j = 0; j < h; j++) {
-        for (int i = 0; i < w; i++) {
-            put(x + i, y + j, rgb);
-        }
-    }
-}
-
-static void frame(int x, int y, int w, int h, uint32_t rgb) {
-    fill(x, y, w, 1, rgb);
-    fill(x, y + h - 1, w, 1, rgb);
-    fill(x, y, 1, h, rgb);
-    fill(x + w - 1, y, 1, h, rgb);
-}
-
-static void glyph(int x, int y, unsigned char c, uint32_t fg) {
-    const unsigned char *g = macjr_font_builtin_8x16[c];
-    for (int row = 0; row < 16; row++) {
-        unsigned char bits = g[row];
-        for (int col = 0; col < 8; col++) {
-            if (bits & (0x80u >> col)) {
-                put(x + col, y + row, fg);
-            }
-        }
-    }
-}
-
-static void text(int x, int y, const char *s, uint32_t fg) {
-    for (; *s; s++, x += 8) {
-        glyph(x, y, (unsigned char)*s, fg);
-    }
-}
-
-/* --- pieces --- */
 typedef struct {
     int8_t cells[4][2];
     int8_t box;
-    uint32_t color;
 } piece_t;
 
 static const piece_t PIECES[7] = {
-    {{{0, 1}, {1, 1}, {2, 1}, {3, 1}}, 4, 0x25d7d7u}, /* I cyan   */
-    {{{0, 0}, {1, 0}, {0, 1}, {1, 1}}, 2, 0xe0c020u}, /* O yellow */
-    {{{1, 0}, {0, 1}, {1, 1}, {2, 1}}, 3, 0xb030d0u}, /* T purple */
-    {{{1, 0}, {2, 0}, {0, 1}, {1, 1}}, 3, 0x40c040u}, /* S green  */
-    {{{0, 0}, {1, 0}, {1, 1}, {2, 1}}, 3, 0xd03030u}, /* Z red    */
-    {{{0, 0}, {0, 1}, {1, 1}, {2, 1}}, 3, 0x4060e0u}, /* J blue   */
-    {{{2, 0}, {0, 1}, {1, 1}, {2, 1}}, 3, 0xe08020u}, /* L orange */
+    {{{0, 1}, {1, 1}, {2, 1}, {3, 1}}, 4}, /* I */
+    {{{0, 0}, {1, 0}, {0, 1}, {1, 1}}, 2}, /* O */
+    {{{1, 0}, {0, 1}, {1, 1}, {2, 1}}, 3}, /* T */
+    {{{1, 0}, {2, 0}, {0, 1}, {1, 1}}, 3}, /* S */
+    {{{0, 0}, {1, 0}, {1, 1}, {2, 1}}, 3}, /* Z */
+    {{{0, 0}, {0, 1}, {1, 1}, {2, 1}}, 3}, /* J */
+    {{{2, 0}, {0, 1}, {1, 1}, {2, 1}}, 3}, /* L */
 };
 
 static uint8_t s_board[GH][GW]; /* 0 empty, else piece type+1 */
 static int s_type, s_rot, s_px, s_py, s_next;
 static unsigned s_score, s_lines, s_level;
 static bool s_over;
+static macjr_tty_t *s_tty;
 
 static uint32_t s_rng = 2463534242u;
 static int rnd7(void) {
@@ -111,7 +67,6 @@ static int rnd7(void) {
     return (int)(x % 7u);
 }
 
-/* The four board cells of piece `type` at rotation `rot`, origin (px,py). */
 static void cells_of(int type, int rot, int px, int py, int out[4][2]) {
     int b = PIECES[type].box;
     for (int i = 0; i < 4; i++) {
@@ -156,7 +111,6 @@ static void lock_piece(void) {
     for (int i = 0; i < 4; i++) {
         s_board[c[i][1]][c[i][0]] = (uint8_t)(s_type + 1);
     }
-    /* clear full rows */
     int cleared = 0;
     for (int y = GH - 1; y >= 0; y--) {
         bool full = true;
@@ -172,7 +126,7 @@ static void lock_piece(void) {
             }
             memset(s_board[0], 0, GW);
             cleared++;
-            y++; /* recheck this row */
+            y++;
         }
     }
     if (cleared) {
@@ -197,67 +151,109 @@ static void reset(void) {
     spawn();
 }
 
-/* --- rendering --- */
-static void cell_block(int gx, int gy, uint32_t color) {
-    fill(WX + gx * CELL, WY + gy * CELL, CELL - 1, CELL - 1, color);
-}
+/* --- rendering (tty only) --- */
+static char s_buf[4096];
+static size_t s_n;
 
-static void mini(int type, int ox, int oy) {
-    int c[4][2];
-    cells_of(type, 0, 0, 0, c);
-    for (int i = 0; i < 4; i++) {
-        fill(ox + c[i][0] * 9, oy + c[i][1] * 9, 8, 8, PIECES[type].color);
+static void put(const char *s) {
+    size_t l = strlen(s);
+    if (s_n + l < sizeof s_buf) {
+        memcpy(s_buf + s_n, s, l);
+        s_n += l;
     }
 }
 
-static void render(macjr_hal_display_t *d) {
-    for (int i = 0; i < SW * SH; i++) {
-        s_fb[i * 3] = (BG_RGB >> 16) & 0xff;
-        s_fb[i * 3 + 1] = (BG_RGB >> 8) & 0xff;
-        s_fb[i * 3 + 2] = BG_RGB & 0xff;
-    }
+static void at(int row, int col) {
+    char b[24];
+    snprintf(b, sizeof b, "\033[%d;%dH", row, col);
+    put(b);
+}
 
-    frame(WX - 2, WY - 2, GW * CELL + 3, GH * CELL + 3, 0x707080u);
-    for (int y = 0; y < GH; y++) {
-        for (int x = 0; x < GW; x++) {
-            cell_block(x, y, s_board[y][x] ? PIECES[s_board[y][x] - 1].color : 0x000000u);
-        }
-    }
+static void render(void) {
+    uint8_t grid[GH][GW];
+    memcpy(grid, s_board, sizeof grid);
     if (!s_over) {
         int c[4][2];
         cells_of(s_type, s_rot, s_px, s_py, c);
         for (int i = 0; i < 4; i++) {
             if (c[i][1] >= 0) {
-                cell_block(c[i][0], c[i][1], PIECES[s_type].color);
+                grid[c[i][1]][c[i][0]] = (uint8_t)(s_type + 1);
             }
         }
     }
 
-    char buf[16];
-    text(PANEL_X, 12, "NEXT", 0xffffffu);
-    mini(s_next, PANEL_X, 32);
-    text(PANEL_X, 92, "SCORE", 0xa0a0ffu);
-    snprintf(buf, sizeof buf, "%u", s_score);
-    text(PANEL_X, 110, buf, 0xffffffu);
-    text(PANEL_X, 136, "LINES", 0xa0a0ffu);
-    snprintf(buf, sizeof buf, "%u", s_lines);
-    text(PANEL_X, 154, buf, 0xffffffu);
-    text(PANEL_X, 180, "LEVEL", 0xa0a0ffu);
-    snprintf(buf, sizeof buf, "%u", s_level);
-    text(PANEL_X, 198, buf, 0xffffffu);
-    text(PANEL_X, 222, "4 6 2 5", 0x808080u);
+    s_n = 0;
+    put("\033[2J");
+
+    /* well: top border, 13 rows, bottom border (ANSI rows 1..15) */
+    at(1, 1);
+    put(TL);
+    for (int i = 0; i < GW * 2; i++) {
+        put(HZ);
+    }
+    put(TR);
+    for (int y = 0; y < GH; y++) {
+        at(y + 2, 1);
+        put(VT);
+        for (int x = 0; x < GW; x++) {
+            int v = grid[y][x];
+            if (v) {
+                char col[8];
+                snprintf(col, sizeof col, "\033[%sm", PCOLOR[v - 1]);
+                put(col);
+                put(BLK);
+                put("\033[0m");
+            } else {
+                put("  ");
+            }
+        }
+        put(VT);
+    }
+    at(GH + 2, 1);
+    put(BL);
+    for (int i = 0; i < GW * 2; i++) {
+        put(HZ);
+    }
+    put(BR);
+
+    /* status panel, right of the well (well ends at column 22) */
+    char b[24];
+    at(1, 25);
+    put("\033[97mTETRIS\033[0m");
+    at(3, 25);
+    put("NEXT");
+    int nc[4][2];
+    cells_of(s_next, 0, 0, 0, nc);
+    for (int i = 0; i < 4; i++) {
+        at(5 + nc[i][1], 26 + nc[i][0] * 2);
+        snprintf(b, sizeof b, "\033[%sm" BLK "\033[0m", PCOLOR[s_next]);
+        put(b);
+    }
+    at(9, 25);
+    put("\033[94mSCORE\033[0m");
+    at(10, 25);
+    snprintf(b, sizeof b, "%u", s_score);
+    put(b);
+    at(11, 25);
+    snprintf(b, sizeof b, "\033[94mLINES\033[0m %u", s_lines);
+    put(b);
+    at(12, 25);
+    snprintf(b, sizeof b, "\033[94mLEVEL\033[0m %u", s_level);
+    put(b);
+    at(14, 25);
+    put("4 6 2 5");
+    at(15, 25);
+    put("Cx exit");
 
     if (s_over) {
-        fill(40, 100, 160, 40, 0x000000u);
-        frame(40, 100, 160, 40, 0xd03030u);
-        text(60, 108, "GAME OVER", 0xff6060u);
-        text(52, 124, "\x18 again  Cx exit", 0xa0a0a0u);
+        at(6, 3);
+        put("\033[91m" " GAME OVER " "\033[0m");
+        at(8, 3);
+        put("\033[97m" "  \x18 again  " "\033[0m");
     }
 
-    d->blit_rgb888(d, 0, 0, SW, SH, s_fb);
-    if (d->end_frame) {
-        d->end_frame(d);
-    }
+    macjr_tty_write(s_tty, s_buf, s_n);
+    macjr_display_flush(s_tty);
 }
 
 /* --- moves --- */
@@ -279,14 +275,12 @@ static void rotate(void) {
     }
 }
 
-/* Move down one; lock and spawn if it can't. Returns true if it locked. */
-static bool step_down(void) {
+static void step_down(void) {
     if (!collides(s_type, s_rot, s_px, s_py + 1)) {
         s_py++;
-        return false;
+    } else {
+        lock_piece();
     }
-    lock_piece();
-    return true;
 }
 
 static void hard_drop(void) {
@@ -300,14 +294,7 @@ static void hard_drop(void) {
 int main(int argc, char *argv[], macjr_tty_t *tty) {
     (void)argc;
     (void)argv;
-    macjr_hal_display_t *d = macjr_tty_display(tty);
-    if (!d || !d->blit_rgb888) {
-        return 1;
-    }
-    s_fb = malloc((size_t)SW * SH * 3);
-    if (!s_fb) {
-        return 1;
-    }
+    s_tty = tty;
     s_rng ^= sys_millis() * 2654435761u;
     if (!s_rng) {
         s_rng = 1;
@@ -319,7 +306,7 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
     }
 
     reset();
-    render(d);
+    render();
     unsigned last = sys_millis();
 
     for (;;) {
@@ -344,18 +331,9 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
             case KEY_MK_4: move_h(-1); dirty = true; break;
             case KEY_MK_6: move_h(1);  dirty = true; break;
             case KEY_MK_5: rotate();   dirty = true; break;
-            case KEY_MK_2:
-                step_down();
-                last = sys_millis();
-                dirty = true;
-                break;
-            case KEY_MK_ENTER:
-                hard_drop();
-                last = sys_millis();
-                dirty = true;
-                break;
-            default:
-                break;
+            case KEY_MK_2: step_down(); last = sys_millis(); dirty = true; break;
+            case KEY_MK_ENTER: hard_drop(); last = sys_millis(); dirty = true; break;
+            default: break;
             }
         }
 
@@ -371,7 +349,7 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
         }
 
         if (dirty) {
-            render(d);
+            render();
         }
         sys_delay(10);
     }
@@ -380,6 +358,5 @@ done:
     if (fd >= 0) {
         close(fd);
     }
-    free(s_fb);
     return 0;
 }
