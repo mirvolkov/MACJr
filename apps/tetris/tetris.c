@@ -4,7 +4,7 @@
  * ANSI colour. A 10x13 well on the left (two characters per cell, so the cells
  * look square), a status panel on the right.
  *
- * Keys (MK-52 digits): 4 left, 6 right, 2 soft-drop, 5 rotate; В↑ hard-drop,
+ * Keys (MK-52 digits): 1 left, 3 right, 2 soft-drop, 5 rotate; В↑ hard-drop,
  * Cx exit. After a game over, В↑ starts again.
  */
 #include <fcntl.h>
@@ -241,7 +241,7 @@ static void render(void) {
     snprintf(b, sizeof b, "\033[94mLEVEL\033[0m %u", s_level);
     put(b);
     at(14, 25);
-    put("4 6 2 5");
+    put("1 3 2 5");
     at(15, 25);
     put("Cx exit");
 
@@ -328,8 +328,8 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
                 continue;
             }
             switch (key) {
-            case KEY_MK_4: move_h(-1); dirty = true; break;
-            case KEY_MK_6: move_h(1);  dirty = true; break;
+            case KEY_MK_1: move_h(-1); dirty = true; break;
+            case KEY_MK_3: move_h(1);  dirty = true; break;
             case KEY_MK_5: rotate();   dirty = true; break;
             case KEY_MK_2: step_down(); last = sys_millis(); dirty = true; break;
             case KEY_MK_ENTER: hard_drop(); last = sys_millis(); dirty = true; break;
