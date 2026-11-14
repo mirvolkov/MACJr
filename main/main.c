@@ -6,7 +6,7 @@
  * stay off until asked for. It starts the system monitor (keys F+K), then loops over the
  * file navigator (components/boot) and the program picked there: an ELF
  * file on the SD card, loaded and run by components/exec, or a .py
- * script, run by /BIN/UPYTHON.ELF (apps/: MK-52 calculator, USB drive, PNG
+ * script, run by /BIN/UPYTHON.ELF (apps/: MK-52 calculator, USB drive, image
  * viewer, remote control, Wi-Fi, mixer, games). A program can also be built into
  * the firmware while it is developed: pass it to boot_select() as a
  * boot_builtin_t. Cx goes back to the navigator when a program ends; F and
@@ -149,8 +149,8 @@ static bool is_audio(const char *path) {
          strcasecmp(dot, ".ogg") == 0 || strcasecmp(dot, ".flac") == 0;
 }
 
-/* An image file from the navigator opens in PNGVIEWER.ELF <file>. */
-#define PNGVIEWER_PATH EXEC_BIN_DIR "/PNGVIEWER.ELF"
+/* An image file from the navigator opens in IMAGEVIEWER.ELF <file>. */
+#define IMAGEVIEWER_PATH EXEC_BIN_DIR "/IMAGEVIEWER.ELF"
 
 static bool is_image(const char *path) {
   const char *dot = strrchr(path, '.');
@@ -224,7 +224,7 @@ void app_main(void) {
     } else if (is_audio(path)) {
       exec_launch_with(tty, PLAYER_PATH, path);
     } else if (is_image(path)) {
-      exec_launch_with(tty, PNGVIEWER_PATH, path);
+      exec_launch_with(tty, IMAGEVIEWER_PATH, path);
     } else {
       exec_launch(tty, path);
     }

@@ -1,5 +1,5 @@
 /*
- * PNGVIEWER.ELF -- show a PNG or JPEG image, given its path as argv[1]. The
+ * IMAGEVIEWER.ELF -- show a PNG or JPEG image, given its path as argv[1]. The
  * navigator launches it when В↑ is pressed on an image file, the way a .py
  * launches UPYTHON and a sound launches AUDIOPLAYER.
  *
@@ -94,7 +94,7 @@ static bool is_jpeg(const char *path) {
   return ends_with_ci(path, ".jpg") || ends_with_ci(path, ".jpeg");
 }
 
-static void png_show(macjr_tty_t *tty, macjr_hal_display_t *display) {
+static void show_image(macjr_tty_t *tty, macjr_hal_display_t *display) {
   s_tty = tty;
   s_display = display;
   view_t v = {.d = display};
@@ -120,17 +120,17 @@ static void png_show(macjr_tty_t *tty, macjr_hal_display_t *display) {
 }
 
 /* The picture is not part of the tty: draw it again after the monitor. */
-static void png_redraw(void *ctx) {
+static void redraw_image(void *ctx) {
   (void)ctx;
   if (s_display) {
-    png_show(s_tty, s_display);
+    show_image(s_tty, s_display);
   }
 }
 
 /* Show the picture until Cx, then return to the navigator. */
 int main(int argc, char *argv[], macjr_tty_t *tty) {
   if (argc < 2 || !argv[1][0]) {
-    const char *msg = "\x1b[2J\x1b[?25l\x1b[1;1H\x1b[91mPNGVIEWER: no file given\r\n";
+    const char *msg = "\x1b[2J\x1b[?25l\x1b[1;1H\x1b[91mIMAGEVIEWER: no file given\r\n";
     macjr_tty_write(tty, msg, strlen(msg));
     macjr_display_flush(tty);
     while (sys_getkey() != SYS_KEY_ESC) {
@@ -139,8 +139,8 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
   }
   s_path = argv[1];
 
-  png_show(tty, macjr_tty_display(tty));
-  monitor_set_redraw_cb(png_redraw, NULL);
+  show_image(tty, macjr_tty_display(tty));
+  monitor_set_redraw_cb(redraw_image, NULL);
   while (sys_getkey() != SYS_KEY_ESC) {
   }
   monitor_set_redraw_cb(NULL, NULL); /* the callback goes away with us */
