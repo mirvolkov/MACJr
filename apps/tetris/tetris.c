@@ -4,8 +4,8 @@
  * ANSI colour. A 10x13 well on the left (two characters per cell, so the cells
  * look square), a status panel on the right.
  *
- * Keys (MK-52 digits): 1 left, 3 right, 2 soft-drop, 5 rotate; В↑ hard-drop,
- * Cx exit. After a game over, В↑ starts again.
+ * Keys (MK-52 digits): 1 left, 3 right, 2 soft-drop, 5 rotate, 0 pause;
+ * В↑ hard-drop, Cx exit. After a game over, В↑ starts again.
  */
 #include <fcntl.h>
 #include <stdbool.h>
@@ -54,7 +54,7 @@ static const piece_t PIECES[7] = {
 static uint8_t s_board[GH][GW]; /* 0 empty, else piece type+1 */
 static int s_type, s_rot, s_px, s_py, s_next;
 static unsigned s_score, s_lines, s_level;
-static bool s_over;
+static bool s_over, s_paused;
 static macjr_tty_t *s_tty;
 
 static uint32_t s_rng = 2463534242u;
@@ -146,7 +146,7 @@ static unsigned drop_ms(void) {
 static void reset(void) {
     memset(s_board, 0, sizeof s_board);
     s_score = s_lines = s_level = 0;
-    s_over = false;
+    s_over = s_paused = false;
     s_next = rnd7();
     spawn();
 }
@@ -241,7 +241,7 @@ static void render(void) {
     snprintf(b, sizeof b, "\033[94mLEVEL\033[0m %u", s_level);
     put(b);
     at(14, 25);
-    put("1 3 2 5");
+    put("1 3 2 5 0");
     at(15, 25);
     put("Cx exit");
 
@@ -250,6 +250,9 @@ static void render(void) {
         put("\033[91m" " GAME OVER " "\033[0m");
         at(8, 3);
         put("\033[97m" "  \x18 again  " "\033[0m");
+    } else if (s_paused) {
+        at(7, 4);
+        put("\033[97m" " PAUSED " "\033[0m");
     }
 
     macjr_tty_write(s_tty, s_buf, s_n);
@@ -327,6 +330,15 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
                 }
                 continue;
             }
+            if (key == KEY_MK_0) {
+                s_paused = !s_paused;
+                last = sys_millis();
+                dirty = true;
+                continue;
+            }
+            if (s_paused) {
+                continue;
+            }
             switch (key) {
             case KEY_MK_1: move_h(-1); dirty = true; break;
             case KEY_MK_3: move_h(1);  dirty = true; break;
@@ -342,7 +354,7 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
             continue;
         }
 
-        if (!s_over && sys_millis() - last >= drop_ms()) {
+        if (!s_over && !s_paused && sys_millis() - last >= drop_ms()) {
             step_down();
             last = sys_millis();
             dirty = true;
