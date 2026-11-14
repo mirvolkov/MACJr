@@ -6,8 +6,8 @@
  * stay off until asked for. It starts the system monitor (keys F+K), then loops over the
  * file navigator (components/boot) and the program picked there: an ELF
  * file on the SD card, loaded and run by components/exec, or a .py
- * script, run by /BIN/UPYTHON.ELF (apps/: IDE demo, MK-52 calculator, USB
- * drive, PNG viewer, remote control, Wi-Fi, mixer, hello). A program can also be built into
+ * script, run by /BIN/UPYTHON.ELF (apps/: MK-52 calculator, USB drive, PNG
+ * viewer, remote control, Wi-Fi, mixer, games). A program can also be built into
  * the firmware while it is developed: pass it to boot_select() as a
  * boot_builtin_t. Cx goes back to the navigator when a program ends; F and
  * Cx together kill a program, which is how to leave those that never

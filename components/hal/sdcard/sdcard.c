@@ -164,7 +164,7 @@ bool sdcard_is_hidden(const char *path)
     if (pdrv == 0xFF) {
         return false;
     }
-    /* FatFs names the volume by its drive number: "0:/BIN/HELLO.ELF" */
+    /* FatFs names the volume by its drive number: "0:/BIN/TETRIS.ELF" */
     char fat_path[FF_MAX_LFN + 16];
     snprintf(fat_path, sizeof(fat_path), "%u:%s", pdrv, path[root] ? path + root : "/");
     FILINFO info;

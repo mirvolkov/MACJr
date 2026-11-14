@@ -4,7 +4,7 @@
  *
  *   ╔═[home]══════════[/BIN]════════[14:05]═╗
  *   ║..                                    ▲
- *   ║HELLO                       ELF  3.1 KB▒
+ *   ║TETRIS                      ELF  6.9 KB▒
  *   ║MK52                        ELF   14 KB■
  *   ║layout                      PNG   86 KB▒
  *   ║...                                   ▼
