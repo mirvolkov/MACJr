@@ -74,7 +74,7 @@ The radio is borrowed from normal Wi-Fi only while the program runs. Cx exits.
 
 Keeping it loadable costs a fixed 64 KB of internal SRAM, reserved at boot
 whether or not it runs, so it now lives on the **`esp-sdr`** branch rather than
-on master (see journey story 16).
+on master.
 
 ## The journey
 
@@ -150,7 +150,9 @@ surfaced on the way: hammering the hardware random seeded the grid in two
 black seconds, and a few kilobytes of resident buffers in internal RAM were
 enough to starve the next program's stack. Vector-unit and matrix-multiply
 versions were written and timed against it anyway; the plain register won, so
-it is the one that stayed.
+it is the one that stayed. Two more games joined it: a Tetris that fits a
+10x13 well into the 40x15 text console with nothing but box and block glyphs,
+and the matrix-rain screensaver the boot menu runs when the machine sits idle.
 
 Then the speaker got files to play. A WAV player streams to the speaker
 through a ring of buffers, parsing the RIFF header by reading forward because
@@ -164,5 +166,5 @@ unfinished, because the USB microphone never worked well. Ahead lie the
 kernel, with processes, memory and file systems, then a standard library, a
 cross-compiler and more programs.
 
-The full log is in 16 short topic stories, with code and real logs, in
+The full log is in 15 short topic stories, with code and real logs, in
 [journey/](journey/).
