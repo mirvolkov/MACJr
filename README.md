@@ -161,10 +161,20 @@ navigator launches it, the way В↑ on a script launches Python. An MP3 decoder
 was fitted and then taken back out, leaving a small WAV player and a reusable
 audio pipeline.
 
+Then pictures became a program. The hardcoded port-layout viewer turned into
+`PNGVIEWER.ELF`, which takes a file and shows it, launched from the navigator
+with В↑ like a script or a sound. JPEG came for free from a decoder already in
+the chip's ROM, adapted from its 8x8 blocks to whole scanlines. The load felt
+slow -- half a second in visible chunks -- but the chunks were just the panel's
+DMA bands; the real cost was reading the SD card a kilobyte at a time over
+20 MHz SPI, fixed by giving the file a 16 KB buffer so each read is one big
+gulp. Pushing the SPI clock to 40 MHz stopped the card mounting on the
+hand-wired board, so it stayed at 20.
+
 So far this is step one, full hardware support. The SoftRock radio is
 unfinished, because the USB microphone never worked well. Ahead lie the
 kernel, with processes, memory and file systems, then a standard library, a
 cross-compiler and more programs.
 
-The full log is in 15 short topic stories, with code and real logs, in
+The full log is in 16 short topic stories, with code and real logs, in
 [journey/](journey/).

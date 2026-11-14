@@ -1,21 +1,20 @@
 TODO: 
 
-- UAC mic is not good
-- usb keyboard (nice to have)
-- RTOS (real time must be kept for SDR if possible)
-    sqlite based database for shared access
-    process model, memory paging, signal mechanism (IPC)
-    stadrad library, crosscompiler...
-    KERNEL - memory/process/fs management
+RTOS (real time must be kept for SDR if possible)
+- process model, memory paging, signal mechanism (IPC)
+- stadrad library, crosscompiler?
+- KERNEL - memory/process/fs management
 
 Extensions and improvements:
-- tango nano as keyboard scanner and PSRAM extension
 - extend external port with SPI
 - VGA output with 80x25 screen size
+- si4735 with external clock and i2s 
 
 Apps:
-- audio player
-- fetch date/time; network stack?
-- gpaphic plotters, matrix op visualizer? 
-- games? tetris, Roguelike, 
-- https://espargos.net/espsdr/ - ESP32 as SDR. Drone sniffer? TX as wifi/ble jammer?
+- network stack
+- graphic plotters, matrix op visualizer? 
+- games? actions, arcades, text strategies
+
+Politics game:
+- python based. control with 1,2,3... keys or select from list with modified upython
+- preset scenarios
