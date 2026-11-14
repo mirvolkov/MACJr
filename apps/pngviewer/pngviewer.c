@@ -1,11 +1,11 @@
 /*
- * PNGVIEWER.ELF -- show a PNG image, given its path as argv[1]. The navigator
- * launches it when В↑ is pressed on an image file, the way a .py launches
- * UPYTHON and a sound launches AUDIOPLAYER.
+ * PNGVIEWER.ELF -- show a PNG or JPEG image, given its path as argv[1]. The
+ * navigator launches it when В↑ is pressed on an image file, the way a .py
+ * launches UPYTHON and a sound launches AUDIOPLAYER.
  *
- * It decodes the PNG row by row and draws it scaled to fit, keeping the aspect
- * ratio. One of the agreed exceptions to console-only apps: it draws on the
- * display HAL behind the tty. Cx returns to the navigator.
+ * It decodes the image row by row and draws it scaled to fit, keeping the
+ * aspect ratio. One of the agreed exceptions to console-only apps: it draws on
+ * the display HAL behind the tty. Cx returns to the navigator.
  *
  * Scaling is nearest-neighbor and streams with the decoder: target row ty
  * shows source row ty * h / th, so as source rows arrive in order each one is
@@ -73,12 +73,39 @@ static macjr_tty_t *s_tty;
 static macjr_hal_display_t *s_display;
 static const char *s_path;
 
+/* Decode by extension: JPEG via the ROM TJpgDec wrapper, everything else as
+ * PNG. (The loader exports no strcasecmp, so match the suffix by hand.) */
+static char lower(char c) { return c >= 'A' && c <= 'Z' ? c + 32 : c; }
+
+static bool ends_with_ci(const char *s, const char *suffix) {
+  size_t ls = strlen(s), lx = strlen(suffix);
+  if (ls < lx) {
+    return false;
+  }
+  for (size_t i = 0; i < lx; i++) {
+    if (lower(s[ls - lx + i]) != lower(suffix[i])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool is_jpeg(const char *path) {
+  return ends_with_ci(path, ".jpg") || ends_with_ci(path, ".jpeg");
+}
+
 static void png_show(macjr_tty_t *tty, macjr_hal_display_t *display) {
   s_tty = tty;
   s_display = display;
   view_t v = {.d = display};
-  esp_err_t ret = display->blit_rgb888 ? png_decode_file(s_path, on_header, on_row, &v)
-                                       : ESP_ERR_NOT_SUPPORTED;
+  esp_err_t ret;
+  if (!display->blit_rgb888) {
+    ret = ESP_ERR_NOT_SUPPORTED;
+  } else if (is_jpeg(s_path)) {
+    ret = jpeg_decode_file(s_path, on_header, on_row, &v);
+  } else {
+    ret = png_decode_file(s_path, on_header, on_row, &v);
+  }
   if (display->end_frame) display->end_frame(display);
   free(v.line);
 

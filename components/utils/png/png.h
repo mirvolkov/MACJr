@@ -27,6 +27,15 @@ typedef void (*png_row_cb_t)(void *ctx, uint32_t y, const uint8_t *rgb);
  * for a damaged file. */
 esp_err_t png_decode_file(const char *path, png_header_cb_t on_header, png_row_cb_t on_row, void *ctx);
 
+/* Decode the baseline JPEG file at `path`, using the same header/row callbacks
+ * as png_decode_file (one on_header, then on_row top to bottom, `rgb` =
+ * width * 3 bytes). Large images are down-scaled by a power of two during
+ * decode so the result is near the screen size. Built on the ESP32-S3 ROM's
+ * TJpgDec; baseline only (no progressive JPEG). Returns ESP_ERR_NOT_FOUND if
+ * the file can't be opened, ESP_ERR_NO_MEM, ESP_ERR_NOT_SUPPORTED for a
+ * progressive/too-wide image, or ESP_ERR_INVALID_RESPONSE for a damaged file. */
+esp_err_t jpeg_decode_file(const char *path, png_header_cb_t on_header, png_row_cb_t on_row, void *ctx);
+
 /* Write `rgb` (width * height pixels of R, G, B, rows packed) as an
  * uncompressed PNG file at `path`. ESP_ERR_NOT_FOUND if the file can't be
  * created, ESP_FAIL if writing failed (the file is removed). */

@@ -106,6 +106,7 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(usbdev_msc_set_card),
   ESP_ELFSYM_EXPORT(usbdev_msc_status),
   ESP_ELFSYM_EXPORT(png_decode_file),
+  ESP_ELFSYM_EXPORT(jpeg_decode_file),
 
   /* ESP-IDF / FreeRTOS */
   ESP_ELFSYM_EXPORT(esp_log),

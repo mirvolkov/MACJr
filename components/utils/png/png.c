@@ -288,11 +288,17 @@ static esp_err_t decode(png_t *png, FILE *f) {
   return png->y == png->height ? ESP_OK : ESP_ERR_INVALID_RESPONSE;
 }
 
+/* SD-over-SPI reads a block per transaction, so a 1 KB-at-a-time parse hits the
+ * card ~1 time per KB. A large stdio buffer turns that into one ~16 KB SD read
+ * per refill -- the biggest lever on decode time. */
+#define FILE_BUF 16384
+
 esp_err_t png_decode_file(const char *path, png_header_cb_t on_header, png_row_cb_t on_row, void *ctx) {
   FILE *f = fopen(path, "rb");
   if (!f) {
     return ESP_ERR_NOT_FOUND;
   }
+  setvbuf(f, NULL, _IOFBF, FILE_BUF);
   png_t *png = calloc(1, sizeof(png_t));
   if (!png) {
     fclose(f);
