@@ -1,11 +1,15 @@
 /*
- * PORT.ELF -- the board's port layout picture: decode the PNG row by row
- * and draw it scaled to fit. One of the agreed exceptions to console-only
- * apps: it draws on the display HAL behind the tty.
+ * PNGVIEWER.ELF -- show a PNG image, given its path as argv[1]. The navigator
+ * launches it when В↑ is pressed on an image file, the way a .py launches
+ * UPYTHON and a sound launches AUDIOPLAYER.
+ *
+ * It decodes the PNG row by row and draws it scaled to fit, keeping the aspect
+ * ratio. One of the agreed exceptions to console-only apps: it draws on the
+ * display HAL behind the tty. Cx returns to the navigator.
  *
  * Scaling is nearest-neighbor and streams with the decoder: target row ty
- * shows source row ty * h / th, so as source rows arrive in order each one
- * is drawn zero times (shrinking), once, or several times (enlarging).
+ * shows source row ty * h / th, so as source rows arrive in order each one is
+ * drawn zero times (shrinking), once, or several times (enlarging).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,12 +19,8 @@
 #include "macjr.h"
 #include "monitor.h"
 #include "png.h"
-#include "sdcard.h"
 
-/* The picture shown: the board's port layout. */
-#define PORT_IMAGE_PATH SDCARD_MOUNT_POINT "/IMG/layout.png"
-
-static const char *TAG = "port";
+static const char *TAG = "pngview";
 
 typedef struct {
   macjr_hal_display_t *d;
@@ -71,38 +71,49 @@ static void on_row(void *ctx, uint32_t y, const uint8_t *rgb) {
 
 static macjr_tty_t *s_tty;
 static macjr_hal_display_t *s_display;
+static const char *s_path;
 
-static void port_show(macjr_tty_t *tty, macjr_hal_display_t *display) {
+static void png_show(macjr_tty_t *tty, macjr_hal_display_t *display) {
   s_tty = tty;
   s_display = display;
   view_t v = {.d = display};
-  esp_err_t ret = display->blit_rgb888 ? png_decode_file(PORT_IMAGE_PATH, on_header, on_row, &v)
+  esp_err_t ret = display->blit_rgb888 ? png_decode_file(s_path, on_header, on_row, &v)
                                        : ESP_ERR_NOT_SUPPORTED;
   if (display->end_frame) display->end_frame(display);
   free(v.line);
 
   if (ret != ESP_OK) {
-    ESP_LOGE(TAG, "%s: %s", PORT_IMAGE_PATH, esp_err_to_name(ret));
-    char msg[160];
+    ESP_LOGE(TAG, "%s: %s", s_path, esp_err_to_name(ret));
+    char msg[256];
     snprintf(msg, sizeof(msg), "\x1b[2J\x1b[?25l\x1b[1;1H\x1b[91mCannot show image:\r\n\x1b[97m%s\r\n%s\r\n",
-             PORT_IMAGE_PATH, ret == ESP_ERR_NOT_FOUND ? "file not found" : esp_err_to_name(ret));
+             s_path, ret == ESP_ERR_NOT_FOUND ? "file not found" : esp_err_to_name(ret));
     macjr_tty_write(tty, msg, strlen(msg));
     macjr_display_flush(tty);
   }
 }
 
 /* The picture is not part of the tty: draw it again after the monitor. */
-static void port_redraw(void *ctx) {
+static void png_redraw(void *ctx) {
   (void)ctx;
   if (s_display) {
-    port_show(s_tty, s_display);
+    png_show(s_tty, s_display);
   }
 }
 
-/* Show the picture until Cx, then return to the menu. */
+/* Show the picture until Cx, then return to the navigator. */
 int main(int argc, char *argv[], macjr_tty_t *tty) {
-  port_show(tty, macjr_tty_display(tty));
-  monitor_set_redraw_cb(port_redraw, NULL);
+  if (argc < 2 || !argv[1][0]) {
+    const char *msg = "\x1b[2J\x1b[?25l\x1b[1;1H\x1b[91mPNGVIEWER: no file given\r\n";
+    macjr_tty_write(tty, msg, strlen(msg));
+    macjr_display_flush(tty);
+    while (sys_getkey() != SYS_KEY_ESC) {
+    }
+    return 1;
+  }
+  s_path = argv[1];
+
+  png_show(tty, macjr_tty_display(tty));
+  monitor_set_redraw_cb(png_redraw, NULL);
   while (sys_getkey() != SYS_KEY_ESC) {
   }
   monitor_set_redraw_cb(NULL, NULL); /* the callback goes away with us */

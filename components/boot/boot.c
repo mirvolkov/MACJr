@@ -603,14 +603,15 @@ void boot_select(macjr_tty_t *tty, const boot_builtin_t *builtins, int n_builtin
           save(DB_KEY_FILE, e->name);
           ESP_LOGI(TAG, "%s (built in) selected", e->name);
           goto picked;
-        } else if (e->kind == KIND_ELF || e->kind == KIND_SCRIPT || e->kind == KIND_SOUND) {
+        } else if (e->kind == KIND_ELF || e->kind == KIND_SCRIPT || e->kind == KIND_SOUND ||
+                   e->kind == KIND_IMAGE) {
           *builtin = NULL;
           snprintf(path, path_len, "%s/%s", s_cwd, e->name);
           save(DB_KEY_FILE, e->name);
           ESP_LOGI(TAG, "%s selected", path);
           goto picked;
         }
-        break; /* images: later */
+        break;
       }
       default:
         continue;
