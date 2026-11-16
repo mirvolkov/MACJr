@@ -5,9 +5,10 @@
  * background, with the clock then set over NTP -- the radio and its buffers
  * stay off until asked for. It starts the system monitor (keys F+K), then loops over the
  * file navigator (components/boot) and the program picked there: an ELF
- * file on the SD card, loaded and run by components/exec, or a .py
- * script, run by /BIN/UPYTHON.ELF (apps/: MK-52 calculator, USB drive, image
- * viewer, IR receiver and sender, Si5351 generator, Wi-Fi, mixer, games). A program can also be built into
+ * file on the SD card, loaded and run by components/exec, a .py script, run
+ * by /BIN/UPYTHON.ELF, or a .c source, compiled by /BIN/CC.ELF (apps/: MK-52
+ * calculator, USB drive, image viewer, IR receiver and sender, Si5351
+ * generator, Wi-Fi, mixer, C compiler, games). A program can also be built into
  * the firmware while it is developed: pass it to boot_select() as a
  * boot_builtin_t. The navigator comes back as soon as a program ends; F and
  * Cx together kill a program, which is how to leave those that never
@@ -137,6 +138,14 @@ static bool is_script(const char *path) {
   return dot && strcasecmp(dot, ".py") == 0;
 }
 
+/* A .c file from the navigator compiles as CC.ELF <file>. */
+#define CC_PATH EXEC_BIN_DIR "/CC.ELF"
+
+static bool is_source(const char *path) {
+  const char *dot = strrchr(path, '.');
+  return dot && strcasecmp(dot, ".c") == 0;
+}
+
 /* A sound file from the navigator plays as AUDIOPLAYER.ELF <file>. */
 #define PLAYER_PATH EXEC_BIN_DIR "/AUDIOPLAYER.ELF"
 
@@ -221,6 +230,8 @@ void app_main(void) {
       exec_launch_main(tty, builtin->name, builtin->main);
     } else if (is_script(path)) {
       exec_launch_with(tty, PYTHON_PATH, path);
+    } else if (is_source(path)) {
+      exec_launch_with(tty, CC_PATH, path);
     } else if (is_audio(path)) {
       exec_launch_with(tty, PLAYER_PATH, path);
     } else if (is_image(path)) {

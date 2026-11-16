@@ -19,10 +19,23 @@
 #include <string.h>
 #include <sys/select.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "db.h"
 #include "esp_err.h"
+#include "esp_heap_caps.h"
+#include "esp_pthread.h"
+#include "private/elf_symbol.h"
+
+/* libgcc's 64-bit helpers (no header declares them) */
+extern long long __divdi3(long long, long long);
+extern long long __moddi3(long long, long long);
+extern unsigned long long __udivdi3(unsigned long long, unsigned long long);
+extern unsigned long long __umoddi3(unsigned long long, unsigned long long);
+extern long long __ashldi3(long long, int);
+extern long long __ashrdi3(long long, int);
+extern long long __lshrdi3(long long, int);
 #include "esp_flash.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -137,6 +150,35 @@ const struct esp_elfsym g_exec_exports[] = {
   EXEC_EXPORT_AS(usleep, exec_usleep),
   EXEC_EXPORT_AS(sleep, exec_sleep),
   EXEC_EXPORT_AS(exit, exec_exit),
+
+  /* libgcc: 64-bit arithmetic for programs built on the board by CC.ELF
+   * (programs built by GCC link their own copy) */
+  ESP_ELFSYM_EXPORT(__divdi3),
+  ESP_ELFSYM_EXPORT(__moddi3),
+  ESP_ELFSYM_EXPORT(__udivdi3),
+  ESP_ELFSYM_EXPORT(__umoddi3),
+  ESP_ELFSYM_EXPORT(__ashldi3),
+  ESP_ELFSYM_EXPORT(__ashrdi3),
+  ESP_ELFSYM_EXPORT(__lshrdi3),
+
+  /* for CC.ELF: its memory in PSRAM, the C library TinyCC uses, and the
+   * firmware's symbol table to check a program's imports against */
+  ESP_ELFSYM_EXPORT(heap_caps_realloc),
+  ESP_ELFSYM_EXPORT(heap_caps_free),
+  ESP_ELFSYM_EXPORT(elf_find_sym),
+  ESP_ELFSYM_EXPORT(esp_pthread_get_default_config),
+  ESP_ELFSYM_EXPORT(esp_pthread_set_cfg),
+  ESP_ELFSYM_EXPORT(lseek),
+  ESP_ELFSYM_EXPORT(qsort),
+  ESP_ELFSYM_EXPORT(sprintf),
+  ESP_ELFSYM_EXPORT(strstr),
+  ESP_ELFSYM_EXPORT(strcat),
+  ESP_ELFSYM_EXPORT(strtoull),
+  ESP_ELFSYM_EXPORT(strtof),
+  ESP_ELFSYM_EXPORT(strtold),
+  ESP_ELFSYM_EXPORT(ldexpl),
+  ESP_ELFSYM_EXPORT(time),
+  ESP_ELFSYM_EXPORT(localtime),
 
   /* C library missing from the loader's table */
   ESP_ELFSYM_EXPORT(snprintf),

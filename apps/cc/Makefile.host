@@ -1,0 +1,22 @@
+# The compiler as a cross compiler on the host, to check the code it
+# generates there (disassemble with xtensa-esp32s3-elf-objdump, check the
+# program with ../tools/checkelf.py):
+#
+#   make -f Makefile.host
+#   ../build/cc-host -o /tmp/hello.elf sd/SRC/hello.c
+#   make -f Makefile.host test   # build sd/SRC/tests.c and run it in test/xtsim.py
+
+HOSTCC ?= cc
+OUT    := ../build
+
+$(OUT)/cc-host: cc.c $(wildcard tinycc/*.c tinycc/*.h)
+	@mkdir -p $(OUT)
+	$(HOSTCC) -O1 -g -w -DCC_SYSINCLUDE=\"$(abspath sd/SRC/INCLUDE)\" -o $@ cc.c
+
+.PHONY: test clean
+test: $(OUT)/cc-host
+	$(OUT)/cc-host -o $(OUT)/tests-host.elf sd/SRC/tests.c
+	python3 test/xtsim.py $(OUT)/tests-host.elf
+
+clean:
+	rm -f $(OUT)/cc-host

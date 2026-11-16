@@ -84,6 +84,17 @@ $(OUT)/obj/%.o: %.c $$(wildcard $$(dir $$*)*.h) ../sdk/include/macjr.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# cc: TinyCC (cc/tinycc) is compiled into cc.c as one source, with its own
+# style, so its warnings are off.
+$(OUT)/obj/cc/cc.o: CFLAGS += -w
+$(OUT)/obj/cc/cc.o: $(wildcard cc/tinycc/*.c cc/tinycc/*.h)
+
+# ccbench: the cc benchmark built by GCC, for comparison. -fno-builtin: it
+# calls the same firmware string functions as the cc build (GCC would
+# otherwise turn strcpy + strcat into stpcpy, which the firmware lacks).
+$(OUT)/obj/ccbench/ccbench.o: CFLAGS += -fno-builtin
+$(OUT)/obj/ccbench/ccbench.o: cc/sd/SRC/bench.c
+
 # $(OUT)/NAME.ELF from the sources of the directory name (lower case)
 $(LIBGCC):
 	@mkdir -p $(OUT)
@@ -141,7 +152,10 @@ install: all
 	@test -n "$(CARD)" || { echo "usage: make install CARD=/Volumes/<card>"; exit 1; }
 	mkdir -p "$(CARD)/BIN"
 	cp $(ELFS) "$(CARD)/BIN/"
-	-command -v dot_clean >/dev/null && dot_clean -m "$(CARD)/BIN" # macOS ._ metadata files
+	mkdir -p "$(CARD)/SRC/INCLUDE"
+	cp cc/sd/SRC/INCLUDE/*.h "$(CARD)/SRC/INCLUDE/"
+	cp -n cc/sd/SRC/*.c "$(CARD)/SRC/" || true # the examples, unless already there
+	-command -v dot_clean >/dev/null && dot_clean -m "$(CARD)/BIN" "$(CARD)/SRC" # macOS ._ metadata files
 
 install-demo:
 	@test -n "$(CARD)" || { echo "usage: make install-demo CARD=/Volumes/<card>"; exit 1; }

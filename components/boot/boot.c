@@ -21,13 +21,13 @@
  *
  * The panel lists name, extension and file size, directories first;
  * built-in programs come first in the root. Colors by type: directories
- * white, programs (ELF, built-ins) cyan, Python scripts green, images
- * yellow, sounds purple, anything else grey. Hidden files are left out: FAT hidden or system
+ * white, programs (ELF, built-ins) cyan, Python scripts green, C sources
+ * dark green, images yellow, sounds purple, anything else grey. Hidden files are left out: FAT hidden or system
  * attribute, or a name starting with '.' (macOS metadata).
  *
  * Keys, as in the WIFI program: П→x / x→П move, В↑ opens a directory,
  * starts a program or runs a script (main.c hands a .py file to
- * UPYTHON.ELF), Cx goes up a directory. Images and sounds do nothing
+ * UPYTHON.ELF and a .c file to CC.ELF), Cx goes up a directory. Images and sounds do nothing
  * yet. The selection is black on cyan, as in DOS Navigator.
  *
  * The directory is saved in the db (nav.dir) whenever it changes, and the
@@ -108,6 +108,7 @@ typedef enum {
   KIND_DIR,
   KIND_ELF,
   KIND_SCRIPT, /* .py, run by UPYTHON.ELF */
+  KIND_SOURCE, /* .c, compiled by CC.ELF */
   KIND_IMAGE,
   KIND_SOUND,
   KIND_OTHER,
@@ -115,7 +116,7 @@ typedef enum {
 
 static const char *const s_kind_fg[] = {
     [KIND_UP] = "\x1b[97m",    [KIND_BUILTIN] = "\x1b[96m", [KIND_DIR] = "\x1b[97m",
-    [KIND_ELF] = "\x1b[96m",   [KIND_SCRIPT] = "\x1b[92m", [KIND_IMAGE] = "\x1b[93m",   [KIND_SOUND] = "\x1b[95m",
+    [KIND_ELF] = "\x1b[96m",   [KIND_SCRIPT] = "\x1b[92m", [KIND_SOURCE] = "\x1b[32m", [KIND_IMAGE] = "\x1b[93m",   [KIND_SOUND] = "\x1b[95m",
     [KIND_OTHER] = "\x1b[90m",
 };
 
@@ -182,6 +183,9 @@ static kind_t file_kind(const char *name) {
   }
   if (strcasecmp(ext, "PY") == 0) {
     return KIND_SCRIPT;
+  }
+  if (strcasecmp(ext, "C") == 0) {
+    return KIND_SOURCE;
   }
   for (size_t i = 0; i < sizeof(images) / sizeof(images[0]); i++) {
     if (strcasecmp(ext, images[i]) == 0) {
@@ -603,8 +607,8 @@ void boot_select(macjr_tty_t *tty, const boot_builtin_t *builtins, int n_builtin
           save(DB_KEY_FILE, e->name);
           ESP_LOGI(TAG, "%s (built in) selected", e->name);
           goto picked;
-        } else if (e->kind == KIND_ELF || e->kind == KIND_SCRIPT || e->kind == KIND_SOUND ||
-                   e->kind == KIND_IMAGE) {
+        } else if (e->kind == KIND_ELF || e->kind == KIND_SCRIPT || e->kind == KIND_SOURCE ||
+                   e->kind == KIND_SOUND || e->kind == KIND_IMAGE) {
           *builtin = NULL;
           snprintf(path, path_len, "%s/%s", s_cwd, e->name);
           save(DB_KEY_FILE, e->name);
