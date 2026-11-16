@@ -1,5 +1,3 @@
-TODO: 
-
 RTOS (real time must be kept for SDR if possible)
 - process model, memory paging, signal mechanism (IPC)
 - stadrad library, crosscompiler?
@@ -9,11 +7,25 @@ Extensions and improvements:
 - extend external port with SPI
 - VGA output with 80x25 screen size
 - si4735 with external clock and i2s 
+- DB9 output
+- GHz radar, GPS?
 
 Apps:
 - network stack
 - graphic plotters, matrix op visualizer? 
 - games? actions, arcades, text strategies
+
+POSIX sources (cc):
+- tinycc: variadic definitions, float/double
+- stdin/stdout/stderr on tty, FILE* stdio, errno
+- termios raw mode, window size, ASCII keyboard
+- file ops: fopen/fgets/lseek/unlink/rename/stat/opendir, cwd
+- full libc + libm headers on the card
+- argv/env/exit, per-program stack size
+- multi-file builds, .a libs, mini make
+- curses-lite, conio shim
+- sockets over lwip
+- milestones: kilo, http client, sc
 
 Politics game:
 - python based. control with 1,2,3... keys or select from list with modified upython

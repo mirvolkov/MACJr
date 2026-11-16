@@ -19,6 +19,7 @@ we fixed it.
 | 9 | [Programs from the SD card](09-programs.md) | ELF apps in PSRAM on the second core, and how to kill them cleanly |
 | 10 | [An IR port](10-ir-remote.md) | A receiver ported from MicroPython, an RMT transmitter, and programs that learn and send codes |
 | 11 | [On the air](11-wifi.md) | The Wi-Fi station and a program to join a network |
+| 16 | [A C compiler on the board](16-c-compiler.md) | TinyCC with a new Xtensa backend, its own ELF writer, and a simulator to test it |
 
 For the compact list of every step so far, open issues and what comes
 next, see [roadmap.txt](roadmap.txt).
