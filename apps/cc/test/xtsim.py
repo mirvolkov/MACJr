@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run a program built by cc on the host: a small Xtensa simulator.
 
-It knows the instructions apps/cc/tinycc/xtensa-gen.c emits (24-bit
+It knows the instructions vendor/tinycc/xtensa-gen.c emits (24-bit
 forms only, windowed CALLX8/ENTRY/RETW), loads the program ELF the way the
 MACJr loader does (sections at their addresses, R_XTENSA_RELATIVE and
 R_XTENSA_GLOB_DAT), and stands in for the firmware with Python versions of

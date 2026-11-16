@@ -84,10 +84,11 @@ $(OUT)/obj/%.o: %.c $$(wildcard $$(dir $$*)*.h) ../sdk/include/macjr.h
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# cc: TinyCC (cc/tinycc) is compiled into cc.c as one source, with its own
-# style, so its warnings are off.
-$(OUT)/obj/cc/cc.o: CFLAGS += -w
-$(OUT)/obj/cc/cc.o: $(wildcard cc/tinycc/*.c cc/tinycc/*.h)
+# cc: TinyCC (vendor/tinycc) is compiled into cc.c as one source, with its
+# own style, so its warnings are off.
+TINYCC := ../vendor/tinycc
+$(OUT)/obj/cc/cc.o: CFLAGS += -w -I$(TINYCC)
+$(OUT)/obj/cc/cc.o: $(wildcard $(TINYCC)/*.c $(TINYCC)/*.h)
 
 # ccbench: the cc benchmark built by GCC, for comparison. -fno-builtin: it
 # calls the same firmware string functions as the cc build (GCC would

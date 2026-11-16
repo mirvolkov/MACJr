@@ -9,9 +9,11 @@
 HOSTCC ?= cc
 OUT    := ../build
 
-$(OUT)/cc-host: cc.c $(wildcard tinycc/*.c tinycc/*.h)
+TINYCC := ../../vendor/tinycc
+
+$(OUT)/cc-host: cc.c $(wildcard $(TINYCC)/*.c $(TINYCC)/*.h)
 	@mkdir -p $(OUT)
-	$(HOSTCC) -O1 -g -w -DCC_SYSINCLUDE=\"$(abspath sd/SRC/INCLUDE)\" -o $@ cc.c
+	$(HOSTCC) -O1 -g -w -I$(TINYCC) -DCC_SYSINCLUDE=\"$(abspath sd/SRC/INCLUDE)\" -o $@ cc.c
 
 .PHONY: test clean
 test: $(OUT)/cc-host

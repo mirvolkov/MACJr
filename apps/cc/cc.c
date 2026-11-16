@@ -1,5 +1,5 @@
 /*
- * CC.ELF -- the C compiler: TinyCC (apps/cc/tinycc) with an Xtensa code
+ * CC.ELF -- the C compiler: TinyCC (vendor/tinycc) with an Xtensa code
  * generator, writing programs that the MACJr loader runs.
  *
  *   cc [-o out.elf] [-Dname[=value]] [-Idir] file.c [file.c ...]
@@ -25,7 +25,7 @@
  * host (apps/cc/Makefile.host) to check the generated code there.
  */
 #define ONE_SOURCE 1
-#include "tinycc/libtcc.c"
+#include "libtcc.c" /* vendor/tinycc */
 
 #ifdef ESP_PLATFORM
 #include <pthread.h>
