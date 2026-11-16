@@ -25,7 +25,7 @@ test pattern on the display.
 | SD card | Programs, pictures, screenshots and settings |
 | MAX98357A I2S amplifier | Sound |
 | MCP23018 I/O expander | Reads the 32 keys of the MK-52 over I2C |
-| Si5351 clock generator | Local oscillator for a Tayloe detector radio |
+| Si5351 clock generator | Three-channel signal generator, 8 kHz to 100 MHz (once the LO of a Tayloe detector radio) |
 | IR receiver and LED | Receives and sends remote control commands |
 
 The last three parts are not in this photo.
@@ -113,7 +113,9 @@ second core, and the firmware shrank to the essentials. New apps no longer
 need a reflash, and a build-time checker catches what the loader would
 reject.
 
-The system then grew more Unix-like. An IR port replaced the analog inputs.
+The system then grew more Unix-like. An IR port replaced the analog inputs,
+with one program that learns remote codes onto the card and one that sends
+them. The Si5351 became a three-channel signal generator.
 `select()` came to the keyboard, along with database watches, so programs can
 wait instead of polling. Wi-Fi arrived with a scrolling list window, the
 console's first real widget. Key chords gave the system a kill: F and Cx end
@@ -170,8 +172,9 @@ at a time over 20 MHz SPI; a 16 KB file buffer made each read one big gulp,
 while pushing the clock to 40 MHz only stopped the card mounting on the
 hand-wired board.
 
-So far this is step one, full hardware support. The SoftRock radio is
-unfinished, because the USB microphone never worked well. Ahead lie the
+So far this is step one, full hardware support. The SoftRock radio was set
+aside, because the USB microphone never worked well; its Si5351 lives on as a
+generator. Ahead lie the
 kernel, with processes, memory and file systems, then a standard library, a
 cross-compiler and more programs.
 

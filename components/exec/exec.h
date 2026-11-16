@@ -38,8 +38,9 @@ esp_err_t exec_run(macjr_tty_t *tty, const char *path, int argc, char **argv, in
 esp_err_t exec_spawn(macjr_tty_t *tty, const char *path, int argc, char **argv, int *status);
 
 /* Run the program at `path` with exec_spawn() (argv[0] = its file name)
- * on a cleared screen, then show its exit code or why it couldn't run and
- * wait for Cx. A killed program returns at once, without a message. */
+ * on a cleared screen. Returns as soon as the program ends or is killed
+ * (the exit code goes to the log only); if it couldn't run, shows why and
+ * waits for Cx. */
 void exec_launch(macjr_tty_t *tty, const char *path);
 
 /* exec_launch() with one argument: argv[1] = `arg`. How the navigator

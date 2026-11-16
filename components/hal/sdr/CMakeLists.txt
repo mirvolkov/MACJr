@@ -1,4 +1,5 @@
-# SDR HAL: Si5351 clock generator (on the shared I2C bus) driving a Tayloe
+# SDR HAL: Si5351 clock generator (on the shared I2C bus): a 3-channel
+# generator (sdr_gen_*), or the LO of a Tayloe
 # quadrature detector with I/Q local-oscillator clocks on CLK0/CLK1.
 # Component name is "sdr".
 idf_component_register(

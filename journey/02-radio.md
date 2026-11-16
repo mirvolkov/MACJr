@@ -69,3 +69,19 @@ checked on a scope or with a real antenna, the rate mismatch needs a proper
 fix, and the Si5351 keeps running after RADIO ends, since its driver has no
 stop call. The two analog inputs have since left the board for the
 [IR port](10-ir-remote.md).
+
+## Later: a three-channel generator
+
+Without the analog inputs, the radio program lost its purpose, and
+`SI5351_CONTROL` became a plain signal generator with no USB microphone. The
+driver gained a second mode: PLLA runs at a fixed 800 MHz, 32 times the
+crystal and so with no fraction and no added jitter. Each of CLK0, CLK1 and
+CLK2 gets its own fractional multisynth, plus an R divider for low frequencies.
+Every output covers 8 kHz to 100 MHz on its own. Checked on the Mac with the
+same arithmetic, the result is within 1 Hz of the request.
+
+`sdr_gen_set_freq(ch, hz)` sets a channel, where 0 turns it off.
+`sdr_gen_enable(on)` switches all outputs at once. In the program, П→x and x→П
+pick a channel, В↑ sets the typed frequency, and С/П turns the chip on or off.
+The settings live in the [config db](08-config-db.md) and come back at the next
+start. The chip keeps generating after the program ends.

@@ -71,7 +71,10 @@ for instead, because deleting it could leave a lock taken for good.
 
 The wrappers track open descriptors too, so leftovers are closed when a program
 ends. A killed program goes back to the boot menu with exit code 137, as on
-Unix: 128 + SIGKILL. The [card](08-config-db.md) and [USB](06-usb.md) needed
+Unix: 128 + SIGKILL. Later, normal endings became just as quiet: when a program
+ends, the menu comes back at once, and the exit code goes to the log. Only a
+program that can't be loaded still stops on a "Cannot run" screen, so that the
+reason can be read. The [card](08-config-db.md) and [USB](06-usb.md) needed
 their own work to come back.
 
 We also asked whether signals could be software interrupts. That is a poor fit:

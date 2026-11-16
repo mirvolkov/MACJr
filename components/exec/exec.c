@@ -486,20 +486,20 @@ static void launch(macjr_tty_t *tty, const char *path, macjr_main_t entry, int a
     ESP_LOGW(TAG, "PSRAM free %u -> %u bytes", (unsigned)heap_before, (unsigned)heap_after);
   }
 
-  if (ret == ESP_OK && status == EXEC_KILLED) {
-    ESP_LOGI(TAG, "%s killed", name);
+  if (ret == ESP_OK) {
+    /* ended or killed: straight back to the menu (the exit code is in the log) */
+    if (status == EXEC_KILLED) {
+      ESP_LOGI(TAG, "%s killed", name);
+    }
     wait_monitor_closed();
-    return; /* straight back to the menu */
+    return;
   }
 
+  /* not loaded: the reason stays on screen until Cx */
   char msg[160];
-  if (ret == ESP_OK) {
-    snprintf(msg, sizeof(msg), "\r\n\x1b[32m-- %s: exit code %d\x1b[0m\r\n", name, status);
-  } else {
-    snprintf(msg, sizeof(msg), "\x1b[2J\x1b[H\x1b[31mCannot run %s:\r\n%s\x1b[0m\r\n", name,
-             ret == ESP_ERR_INVALID_ARG ? "not a program, or needs a function\r\nthe firmware doesn't export"
-                                        : esp_err_to_name(ret));
-  }
+  snprintf(msg, sizeof(msg), "\x1b[2J\x1b[H\x1b[31mCannot run %s:\r\n%s\x1b[0m\r\n", name,
+           ret == ESP_ERR_INVALID_ARG ? "not a program, or needs a function\r\nthe firmware doesn't export"
+                                      : esp_err_to_name(ret));
   wait_monitor_closed();
   macjr_tty_write(tty, msg, strlen(msg));
   const char *hint = "\x1b[90mPress Cx for the menu\x1b[0m";

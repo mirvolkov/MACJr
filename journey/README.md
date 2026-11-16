@@ -17,7 +17,7 @@ we fixed it.
 | 7 | [Pictures: PNG in and out](07-pictures.md) | A streaming decoder on the ROM's inflater, a shadow framebuffer, screenshots |
 | 8 | [The config database](08-config-db.md) | SQLite, a text file, then FlashDB, with watches and a safe unmount |
 | 9 | [Programs from the SD card](09-programs.md) | ELF apps in PSRAM on the second core, and how to kill them cleanly |
-| 10 | [An IR port](10-ir-remote.md) | A receiver ported from MicroPython, an RMT transmitter, and a remote control |
+| 10 | [An IR port](10-ir-remote.md) | A receiver ported from MicroPython, an RMT transmitter, and programs that learn and send codes |
 | 11 | [On the air](11-wifi.md) | The Wi-Fi station and a program to join a network |
 
 For the compact list of every step so far, open issues and what comes

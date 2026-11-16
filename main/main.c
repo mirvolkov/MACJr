@@ -7,9 +7,9 @@
  * file navigator (components/boot) and the program picked there: an ELF
  * file on the SD card, loaded and run by components/exec, or a .py
  * script, run by /BIN/UPYTHON.ELF (apps/: MK-52 calculator, USB drive, image
- * viewer, remote control, Wi-Fi, mixer, games). A program can also be built into
+ * viewer, IR receiver and sender, Si5351 generator, Wi-Fi, mixer, games). A program can also be built into
  * the firmware while it is developed: pass it to boot_select() as a
- * boot_builtin_t. Cx goes back to the navigator when a program ends; F and
+ * boot_builtin_t. The navigator comes back as soon as a program ends; F and
  * Cx together kill a program, which is how to leave those that never
  * return (radio, USB drive, MK-52).
  */

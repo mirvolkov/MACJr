@@ -75,7 +75,7 @@ static esp_err_t read_reg(uint8_t reg, uint8_t *val)
 
 /* Encode a + b/c into the 8-byte P1/P2/P3 block shared by PLL and
  * multisynth parameter registers (AN619 section 3.2 / 4.1.2). */
-static void encode_params(uint32_t a, uint32_t b, uint32_t c, uint8_t out[8])
+static void encode_params(uint32_t a, uint32_t b, uint32_t c, uint8_t r_log2, uint8_t out[8])
 {
     uint32_t f = (uint32_t)(((uint64_t)128 * b) / c);
     uint32_t p1 = 128 * a + f - 512;
@@ -84,7 +84,7 @@ static void encode_params(uint32_t a, uint32_t b, uint32_t c, uint8_t out[8])
 
     out[0] = (p3 >> 8) & 0xFF;
     out[1] = p3 & 0xFF;
-    out[2] = (p1 >> 16) & 0x03; /* R_DIV = 1, DIVBY4 = 0 */
+    out[2] = ((r_log2 & 0x07) << 4) | ((p1 >> 16) & 0x03); /* R_DIV = 2^r_log2, DIVBY4 = 0 */
     out[3] = (p1 >> 8) & 0xFF;
     out[4] = p1 & 0xFF;
     out[5] = (((p3 >> 16) & 0x0F) << 4) | ((p2 >> 16) & 0x0F);
@@ -163,11 +163,11 @@ esp_err_t si5351_set_quadrature(uint32_t hz)
 
     uint8_t params[8];
     esp_err_t ret;
-    encode_params(a, b, c, params);
+    encode_params(a, b, c, 0, params);
     if ((ret = write_regs(REG_PLLA_PARAMS, params, 8)) != ESP_OK) return ret;
 
     /* MS0 = MS1 = N, integer mode (b = 0, c = 1). */
-    encode_params(n, 0, 1, params);
+    encode_params(n, 0, 1, 0, params);
     if ((ret = write_regs(REG_MS0_PARAMS, params, 8)) != ESP_OK) return ret;
     if ((ret = write_regs(REG_MS1_PARAMS, params, 8)) != ESP_OK) return ret;
 
@@ -186,4 +186,82 @@ esp_err_t si5351_set_quadrature(uint32_t hz)
              (unsigned long)hz, vco, (unsigned long)a, (unsigned long)b, (unsigned long)c,
              (unsigned long)n);
     return ESP_OK;
+}
+
+/* ---- generator mode ---- */
+
+#define GEN_MS_MIN 8    /* fractional multisynth: 8 + 1/c .. 2048 */
+#define GEN_MS_MAX 2048
+#define GEN_R_MAX  7    /* R divider up to 128 */
+
+esp_err_t si5351_gen_start(void)
+{
+    if (!s_dev) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    uint8_t params[8];
+    esp_err_t ret;
+    encode_params((uint32_t)(SI5351_GEN_VCO_HZ / SI5351_XTAL_HZ), 0, 1, 0, params);
+    if ((ret = write_regs(REG_PLLA_PARAMS, params, 8)) != ESP_OK) return ret;
+    for (int ch = 0; ch < 3; ch++) {
+        if ((ret = write_reg(REG_CLK0_PHOFF + ch, 0)) != ESP_OK) return ret;
+    }
+    return write_reg(REG_PLL_RESET, PLL_RESET_A);
+}
+
+esp_err_t si5351_gen_set(int ch, uint32_t hz)
+{
+    if (!s_dev) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (ch < 0 || ch > 2) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (hz == 0) {
+        return write_reg(REG_CLK0_CTRL + ch, CLK_PDN);
+    }
+
+    /* Smallest R that brings the multisynth divider down to 2048. */
+    uint8_t r = 0;
+    while (r < GEN_R_MAX && SI5351_GEN_VCO_HZ / ((uint64_t)hz << r) > GEN_MS_MAX) {
+        r++;
+    }
+    uint64_t d = (uint64_t)hz << r;
+    uint32_t a = (uint32_t)(SI5351_GEN_VCO_HZ / d);
+    uint64_t rem = SI5351_GEN_VCO_HZ % d;
+    uint32_t b, c;
+    if (d <= FRAC_DENOM) {
+        b = (uint32_t)rem; /* exact */
+        c = (uint32_t)d;
+    } else {
+        b = (uint32_t)((rem * FRAC_DENOM + d / 2) / d);
+        c = FRAC_DENOM;
+        if (b >= c) { a++; b = 0; }
+    }
+    if (b == 0) {
+        c = 1;
+    }
+    if (a < GEN_MS_MIN || a > GEN_MS_MAX || (a == GEN_MS_MAX && b)) {
+        ESP_LOGE(TAG, "%lu Hz out of generator range", (unsigned long)hz);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    uint8_t params[8];
+    esp_err_t ret;
+    encode_params(a, b, c, r, params);
+    if ((ret = write_regs(REG_MS0_PARAMS + 8 * ch, params, 8)) != ESP_OK) return ret;
+    uint8_t ctrl = CLK_SRC_MS | CLK_IDRV_8MA | (b == 0 && !(a & 1) ? CLK_MS_INT : 0); /* from PLLA */
+    if ((ret = write_reg(REG_CLK0_CTRL + ch, ctrl)) != ESP_OK) return ret;
+
+    ESP_LOGI(TAG, "CLK%d = %lu Hz: MS = %lu + %lu/%lu, R = %u", ch, (unsigned long)hz,
+             (unsigned long)a, (unsigned long)b, (unsigned long)c, 1u << r);
+    return ESP_OK;
+}
+
+esp_err_t si5351_output_enable(uint8_t mask)
+{
+    if (!s_dev) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return write_reg(REG_OUTPUT_ENABLE, (uint8_t)~mask);
 }

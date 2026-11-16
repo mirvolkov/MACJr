@@ -43,5 +43,20 @@ step by step: logging every block, a loopback through our own LED, and reading
 GPIO3 as an ADC. In the end the receiver moved from GPIO3 to GPIO5, and it
 worked at once. What upset GPIO3 we never found out.
 
-**Result:** an `ir` HAL that receives on GPIO5 and sends on GPIO4, and a remote
-control program to test it with.
+## A receiver and a sender
+
+`REMOTE` (later `IR_CONTROL`) then split in two. `IR_RX` only listens: it shows
+the last command, and ПП opens a window to type a number under which the
+command is saved. `IR_TX` lists the saved codes and sends the selected one on
+В↑. Its manual window takes a protocol, an address and a command, in decimal,
+since the MK-52 has no A–F keys.
+
+The codes go to `IR/CODES.TXT` on the card, one text line each, such as
+`12 NEC 0 69 0 68`. A protocol the decoder doesn't know is kept as
+`RAW` with its pulse lengths. Saving appends a line, and the last line for a
+number wins, so the file is never rewritten. Until now programs could only
+read files, so the firmware began exporting `write()` and `mkdir()`.
+
+**Result:** an `ir` HAL that receives on GPIO5 and sends on GPIO4, and two
+programs: one learns codes from a remote, the other plays them back or sends
+typed ones.
