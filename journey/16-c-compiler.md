@@ -88,6 +88,37 @@ time, and lines per second. `bench.c` runs nine integer benchmarks, each
 checking its own result. The same file built by GCC `-O2` is `CCBENCH.ELF`, so
 the two compilers can be compared on identical source.
 
+## The first program built only on the board
+
+The text viewer is the first program that exists only as source on the
+card: `SRC/TEXTVIEWER/textviewer.c`. It is one file, because the navigator
+hands CC one file, and it uses only the headers in `SRC/INCLUDE`. The
+navigator opens text files (`.txt .md .log .ini .cfg .csv .json .h`) with
+`/BIN/TEXTVIEWER.ELF` and the file's path, the way it hands pictures to the
+image viewer.
+
+```
+═══════════════[long.txt]═══════════════
+Line 3: the quick brown fox jumps over ▒
+the lazy dog again and again           ▒
+    Tabbed  line    with    tabs       ■
+Привiт, свiт! Їжак, Ганок, "лапки" -   ▒
+ Line 3/63 2%         -+ page  Cx exit
+```
+
+It wraps lines at word boundaries to 39 columns and draws the list
+window's scroll bar in the 40th. A file that is valid UTF-8 is shown with
+CP866 glyphs for Cyrillic (Ukrainian included), box drawing and
+punctuation; any other file is shown as CP866. Control characters,
+including ESC, show as dots, so a file can't drive the terminal.
+
+It was tested before it ever reached the board. The Mac build of CC
+compiled it, and the simulator ran it with file reads, argv, scripted keys
+and a 40x15 screen added on top. That caught the wrong case: the tty has no
+column-only escape (`ESC [ n G`). Then CC on the board compiled the same
+source into an ELF that was byte for byte the one the Mac build made, and
+that ELF went to `/BIN`.
+
 **Result:** C programs written, compiled and run on the board, and a compiler
 backend tested on the host before it reaches the chip. Not there yet: floating
 point, variadic function definitions, variable-length arrays and inline

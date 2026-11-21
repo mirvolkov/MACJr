@@ -1,19 +1,22 @@
 RTOS (real time must be kept for SDR if possible)
 - process model, memory paging, signal mechanism (IPC)
-- stadrad library, crosscompiler?
 - KERNEL - memory/process/fs management
+- unix-like app distribution model (compile, register, open by extension)
+- DOS - disk operations support
 
-Extensions and improvements:
+Extensions:
 - extend external port with SPI
 - VGA output with 80x25 screen size
-- si4735 with external clock and i2s 
-- DB9 output
-- GHz radar, GPS?
+- UART DB9 output + pow inject + uart_set_line_inverse -> test radar, gps 
+- https://github.com/whstudio123/esp32-iq-tx
+- CAN bus 
+- NFC (needs extra hardware)
 
 Apps:
 - network stack
 - graphic plotters, matrix op visualizer? 
 - games? actions, arcades, text strategies
+- CLAUDE aceess (get notification, show messages, get simple feedbacks)
 
 POSIX sources (cc):
 - tinycc: variadic definitions, float/double

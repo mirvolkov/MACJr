@@ -77,6 +77,32 @@ program that can't be loaded still stops on a "Cannot run" screen, so that the
 reason can be read. The [card](08-config-db.md) and [USB](06-usb.md) needed
 their own work to come back.
 
+## A faster kill, and why we took it back
+
+The second of grace showed: a program stuck in a loop took a full second to
+die. So we tried it the Unix way. A signal kills a process at once while it
+runs its own code, but waits while it is inside the kernel. Here the watcher
+suspended the program's task every tick and read the PC from its saved
+Xtensa frame. A PC inside the ELF's `.text` meant no firmware call was under
+way, so no lock could be held, and the task was deleted on the spot. Loops
+died within a few milliseconds.
+
+Then USBDRIVE hung the board when it was killed. The kill itself worked: the
+program left at its next delay slice. But its cleanup runs in its own task,
+and `usb_port_down()` waits there in `ulTaskNotifyTake()` for the TinyUSB
+task to stop. Meanwhile the watcher was still suspending it every tick, and
+in FreeRTOS `vTaskSuspend()` cancels a pending notification wait. The wait
+returned early, TinyUSB was torn down while still running, and everything
+stopped. Suspending a blocked task also cuts delays short and wakes queue
+waits, so any firmware call could have hit the same thing.
+
+The fix was to run the check on CPU1 itself through an IPC call. While the
+IPC task holds the core, the program pinned there can't run or change state,
+so it could be suspended only if it was ready, never while blocked. That
+worked, but by then the trade was clear: a second saved on a runaway loop,
+against new and subtle ways to break the firmware. The change was reverted.
+Locks released correctly are worth more than a second.
+
 We also asked whether signals could be software interrupts. That is a poor fit:
 a program's code lives in PSRAM, which can't be reached while the flash cache is
 off. Signals, when they come, will be a pending-bit mask checked at safe points,

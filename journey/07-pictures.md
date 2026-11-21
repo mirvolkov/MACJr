@@ -69,6 +69,14 @@ The monitor task handles the chord, since it always listens. It copies the
 image first and then writes it to `SHOTS/SHOT0001.PNG` and on, so the running
 program carries on.
 
+At first the only sign of a screenshot was the "Screenshot taken" window, and
+it came only after the file was written. Encoding 230 KB and writing it to the
+card takes a noticeable moment, so the chord felt laggy. Now the save is split
+in two. `screenshot_grab()` copies the shadow framebuffer, which is fast. Only
+then does a "Taking screenshot" window go up, so it never ends up in the
+picture. `screenshot_write()` encodes the file and saves it, and the same
+window changes to the file name, or to the reason it failed.
+
 ## From one picture to any picture
 
 The port-layout program knew one path and nothing else. But its drawing code --

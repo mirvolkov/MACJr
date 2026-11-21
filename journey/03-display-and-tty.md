@@ -97,6 +97,12 @@ checkered track and a one-cell thumb. That took work on the font too:
 - CP866 has no arrows, so `▲` and `▼` went into codes 30 and 31, where the
   classic DOS font keeps them. The console used to drop those control codes.
 
+Long lists later got Home and End. ←ШГ and ШГ→, the MK-52's program step
+keys, jump to the first and the last item in every list: the navigator, the
+monitor page, WIFI and IR_TX. A USB keyboard's Home and End send the same
+codes. The list needed no new call, because moving by the item count already
+stops at the ends.
+
 ## Box corners nobody noticed
 
 The first useful [screenshot](07-pictures.md) came from IDE DEMO, and zooming
