@@ -78,8 +78,10 @@ extern "C" {
 #define KEY_MK_K        150 /* K   prefix: extended commands */
 #define KEY_MK_X_TO_P   157 /* x→П store X to register */
 #define KEY_MK_P_TO_X   156 /* П→x recall register to X */
-#define KEY_MK_STEP_FWD 155 /* ШГ→ program step forward */
-#define KEY_MK_STEP_BCK 151 /* ←ШГ program step back */
+#define KEY_MK_STEP_FWD 155 /* ШГ→ program step forward; End: last item of a list */
+#define KEY_MK_STEP_BCK 151 /* ←ШГ program step back; Home: first item of a list */
+#define KEY_MK_HOME     KEY_MK_STEP_BCK
+#define KEY_MK_END      KEY_MK_STEP_FWD
 #define KEY_MK_BP       154 /* БП  unconditional jump (goto) */
 #define KEY_MK_PP       159 /* ПП  subroutine call / single step */
 #define KEY_MK_VO       153 /* В/О return / reset program counter */

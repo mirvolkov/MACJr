@@ -171,6 +171,24 @@ static bool is_image(const char *path) {
          strcasecmp(dot, ".gif") == 0;
 }
 
+/* A text file from the navigator opens in TEXTVIEWER.ELF <file>, which is
+ * built on the board from SRC/TEXTVIEWER/textviewer.c. */
+#define TEXTVIEWER_PATH EXEC_BIN_DIR "/TEXTVIEWER.ELF"
+
+static bool is_text(const char *path) {
+  static const char *const exts[] = {".txt", ".md", ".log", ".ini", ".cfg", ".csv", ".json", ".h"};
+  const char *dot = strrchr(path, '.');
+  if (!dot) {
+    return false;
+  }
+  for (size_t i = 0; i < sizeof(exts) / sizeof(exts[0]); i++) {
+    if (strcasecmp(dot, exts[i]) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static void start_monitor(macjr_tty_t *tty) {
   if (monitor_start(tty) != ESP_OK) {
     ESP_LOGW(TAG, "monitor_start failed");
@@ -236,6 +254,8 @@ void app_main(void) {
       exec_launch_with(tty, PLAYER_PATH, path);
     } else if (is_image(path)) {
       exec_launch_with(tty, IMAGEVIEWER_PATH, path);
+    } else if (is_text(path)) {
+      exec_launch_with(tty, TEXTVIEWER_PATH, path);
     } else {
       exec_launch(tty, path);
     }

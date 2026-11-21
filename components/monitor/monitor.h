@@ -2,6 +2,8 @@
 #define MACJR_MONITOR_H
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #include "esp_err.h"
 #include "keyboard.h"
@@ -36,11 +38,16 @@ extern "C" {
  * and once `tty` exists. */
 esp_err_t monitor_start(macjr_tty_t *tty);
 
-/* Save what the panel shows as SHOTS/SHOTnnnn.PNG on the SD card. True on
- * success, with the file ("SHOTS/SHOT0008.PNG") in `msg`; false with the
- * reason in `msg`. SCREENSHOT_KEY does this, and shows the outcome in a
- * window for a second. */
-bool screenshot_save(macjr_tty_t *tty, char *msg, size_t len);
+/* A screenshot in two steps, so that something can be shown on screen
+ * between them without ending up in the picture. screenshot_grab() copies
+ * what the panel shows (fast: from the screen's copy in PSRAM) and returns
+ * the RGB888 image, or NULL with the reason in `msg`. screenshot_write()
+ * saves it as SHOTS/SHOTnnnn.PNG on the SD card (slow: PNG encoding and
+ * the card) and frees it; true with the file ("SHOTS/SHOT0008.PNG") in
+ * `msg`, false with the reason. SCREENSHOT_KEY does both, showing a
+ * "Taking screenshot" window meanwhile and then the outcome for a second. */
+uint8_t *screenshot_grab(macjr_tty_t *tty, char *msg, size_t len);
+bool screenshot_write(macjr_tty_t *tty, uint8_t *rgb, char *msg, size_t len);
 
 /* Switch MONITOR_KEY handling off (for an app that needs that key itself)
  * or back on. On by default. */

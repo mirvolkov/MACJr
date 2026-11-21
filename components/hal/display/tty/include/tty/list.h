@@ -52,7 +52,8 @@ void macjr_tty_list_set_count(macjr_tty_list_t *list, int count);
 
 /* Move the selection by `delta` items (negative: up), stopping at the
  * ends, and scroll to keep it in the window. True if it moved. Draws
- * nothing. */
+ * nothing. Keys: П→x / x→П move by one, ←ШГ / ШГ→ (KEY_MK_HOME /
+ * KEY_MK_END) go to the first / last item: -count / +count. */
 bool macjr_tty_list_move(macjr_tty_list_t *list, int delta);
 
 /* Draw the window: scroll bar and visible items. Leaves the colors reset;

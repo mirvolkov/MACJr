@@ -9,6 +9,7 @@
  *   Enter                   В↑ (KEY_MK_ENTER)
  *   Esc, Backspace          Cx (KEY_ESC)
  *   ↑ / ↓                   П→x / x→П, the keys lists move with
+ *   Home / End              ←ШГ / ШГ→, a list's first / last item
  *
  * No auto-repeat: holding a key types it once. No Caps Lock.
  */
@@ -65,6 +66,10 @@ static uint8_t translate(uint8_t kc, bool shift) {
       return KEY_MK_P_TO_X;
     case HID_KEY_ARROW_DOWN:
       return KEY_MK_X_TO_P;
+    case HID_KEY_HOME:
+      return KEY_MK_HOME;
+    case HID_KEY_END:
+      return KEY_MK_END;
     default:
       break;
   }

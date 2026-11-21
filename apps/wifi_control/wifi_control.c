@@ -39,6 +39,8 @@
 
 #define KEY_UP   KEY_MK_P_TO_X   /* П→x */
 #define KEY_DOWN KEY_MK_X_TO_P   /* x→П */
+#define KEY_HOME KEY_MK_HOME     /* ←ШГ: first item */
+#define KEY_END  KEY_MK_END      /* ШГ→: last item */
 #define KEY_OK   KEY_MK_ENTER    /* В↑ */
 #define KEY_SCAN KEY_MK_SP       /* С/П */
 #define KEY_BACK KEY_ESC         /* Cx */
@@ -311,6 +313,10 @@ static bool on_key(uint8_t key) {
       macjr_tty_list_move(&s_list, -1);
     } else if (key == KEY_DOWN) {
       macjr_tty_list_move(&s_list, 1);
+    } else if (key == KEY_HOME) {
+      macjr_tty_list_move(&s_list, -s_list.count);
+    } else if (key == KEY_END) {
+      macjr_tty_list_move(&s_list, s_list.count);
     } else if (key == KEY_OK && s_list.sel >= 0) {
       open_window();
     } else if (key == KEY_SCAN) {

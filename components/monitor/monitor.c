@@ -259,8 +259,9 @@ static void run_monitor(int fd) {
         break;
       } else if (key == SCREENSHOT_KEY) {
         take_screenshot();
-      } else if (key == KEY_MK_P_TO_X || key == KEY_MK_X_TO_P) {
-        if (macjr_tty_list_move(&s_list, key == KEY_MK_P_TO_X ? -1 : 1)) {
+      } else if (key == KEY_MK_P_TO_X || key == KEY_MK_X_TO_P || key == KEY_MK_HOME || key == KEY_MK_END) {
+        int delta = key == KEY_MK_P_TO_X ? -1 : key == KEY_MK_X_TO_P ? 1 : key == KEY_MK_HOME ? -s_list.count : s_list.count;
+        if (macjr_tty_list_move(&s_list, delta)) {
           macjr_tty_list_draw(s_tty, &s_list);
           macjr_display_flush(s_tty);
         }
@@ -278,29 +279,42 @@ static void run_monitor(int fd) {
   }
 }
 
-/* Show a centered window with `title` in its top edge and `text` inside
- * for NOTICE_MS, then put the screen back. Programs see the monitor open
- * meanwhile, so they don't draw over it; inside the monitor page it just
- * covers that page for a moment. */
-static void notice(const char *title, const char *text, const char *fg) {
-  bool was_open = s_open;
-  s_open = true;
-  macjr_tty_screen_t *saved = macjr_tty_save_screen(s_tty);
-  if (!saved) {
-    s_open = was_open;
-    return;
-  }
+/* A centered window with a title in its top edge and a line of text,
+ * over the saved screen. Programs see the monitor open while it is up, so
+ * they don't draw over it; inside the monitor page it just covers that
+ * page for a moment. */
+typedef struct {
+  macjr_tty_screen_t *saved;
+  bool was_open;
   macjr_tty_window_t win;
-  macjr_tty_window_center(s_tty, &win, NOTICE_W, NOTICE_H);
-  macjr_tty_window_draw(s_tty, &win, title);
-  macjr_tty_window_text(s_tty, &win, (NOTICE_H - 2) / 2, fg, true, text);
-  macjr_display_flush(s_tty);
+} notice_t;
 
-  vTaskDelay(pdMS_TO_TICKS(NOTICE_MS));
-
-  macjr_tty_restore_screen(s_tty, saved);
+/* (Re)draw the window's contents. */
+static void notice_set(notice_t *n, const char *title, const char *text, const char *fg) {
+  macjr_tty_window_draw(s_tty, &n->win, title);
+  macjr_tty_window_text(s_tty, &n->win, (NOTICE_H - 2) / 2, fg, true, text);
   macjr_display_flush(s_tty);
-  if (!was_open) {
+}
+
+/* Put the window up; false if the screen can't be saved (nothing shown). */
+static bool notice_open(notice_t *n, const char *title, const char *text, const char *fg) {
+  n->was_open = s_open;
+  s_open = true;
+  n->saved = macjr_tty_save_screen(s_tty);
+  if (!n->saved) {
+    s_open = n->was_open;
+    return false;
+  }
+  macjr_tty_window_center(s_tty, &n->win, NOTICE_W, NOTICE_H);
+  notice_set(n, title, text, fg);
+  return true;
+}
+
+/* Take the window down and put the screen back. */
+static void notice_close(notice_t *n) {
+  macjr_tty_restore_screen(s_tty, n->saved);
+  macjr_display_flush(s_tty);
+  if (!n->was_open) {
     s_open = false;
     if (s_redraw_cb) {
       s_redraw_cb(s_redraw_ctx); /* repaint what the app drew outside the tty */
@@ -308,14 +322,35 @@ static void notice(const char *title, const char *text, const char *fg) {
   }
 }
 
-/* SCREENSHOT_KEY: save the picture first, then say how it went. */
+/* Show the window for NOTICE_MS. */
+static void notice(const char *title, const char *text, const char *fg) {
+  notice_t n;
+  if (notice_open(&n, title, text, fg)) {
+    vTaskDelay(pdMS_TO_TICKS(NOTICE_MS));
+    notice_close(&n);
+  }
+}
+
+/* SCREENSHOT_KEY: grab the picture, then say so at once -- the window
+ * isn't in the picture -- while it is written to the card, which takes a
+ * moment; then the outcome in the same window. */
 static void take_screenshot(void) {
   char msg[48];
-  if (screenshot_save(s_tty, msg, sizeof(msg))) {
-    notice("Screenshot taken", msg, "97");
-  } else {
+  uint8_t *rgb = screenshot_grab(s_tty, msg, sizeof(msg));
+  if (!rgb) {
     notice("Screenshot failed", msg, "93");
+    return;
   }
+  notice_t n;
+  bool shown = notice_open(&n, "Taking screenshot", "Saving to the SD card...", "97");
+  bool ok = screenshot_write(s_tty, rgb, msg, sizeof(msg));
+  if (!shown) {
+    notice(ok ? "Screenshot taken" : "Screenshot failed", msg, ok ? "97" : "93");
+    return;
+  }
+  notice_set(&n, ok ? "Screenshot taken" : "Screenshot failed", msg, ok ? "97" : "93");
+  vTaskDelay(pdMS_TO_TICKS(NOTICE_MS));
+  notice_close(&n);
 }
 
 /* USB_KBD_KEY: switch the USB keyboard on or off, and say so. */

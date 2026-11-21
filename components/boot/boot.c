@@ -22,13 +22,16 @@
  * The panel lists name, extension and file size, directories first;
  * built-in programs come first in the root. Colors by type: directories
  * white, programs (ELF, built-ins) cyan, Python scripts green, C sources
- * dark green, images yellow, sounds purple, anything else grey. Hidden files are left out: FAT hidden or system
+ * dark green, images yellow, sounds purple, text files light grey,
+ * anything else dark grey. Hidden files are left out: FAT hidden or system
  * attribute, or a name starting with '.' (macOS metadata).
  *
- * Keys, as in the WIFI program: П→x / x→П move, В↑ opens a directory,
- * starts a program or runs a script (main.c hands a .py file to
- * UPYTHON.ELF and a .c file to CC.ELF), Cx goes up a directory. Images and sounds do nothing
- * yet. The selection is black on cyan, as in DOS Navigator.
+ * Keys, as in the WIFI program: П→x / x→П move, ←ШГ / ШГ→ go to the first /
+ * last entry, В↑ opens a directory or a file (main.c runs a program, and
+ * hands a .py file to UPYTHON.ELF, a .c file to CC.ELF, a sound to
+ * AUDIOPLAYER.ELF, an image to IMAGEVIEWER.ELF and a text file to
+ * TEXTVIEWER.ELF), Cx goes up a directory. The selection is black on cyan,
+ * as in DOS Navigator.
  *
  * The directory is saved in the db (nav.dir) whenever it changes, and the
  * entry started from it (nav.file) when a program starts; after a reboot
@@ -63,6 +66,8 @@ static const char *TAG = "boot";
 
 #define KEY_UP   KEY_MK_P_TO_X /* П→x */
 #define KEY_DOWN KEY_MK_X_TO_P /* x→П */
+#define KEY_HOME KEY_MK_HOME   /* ←ШГ */
+#define KEY_END  KEY_MK_END    /* ШГ→ */
 #define KEY_OPEN KEY_MK_ENTER  /* В↑ */
 #define KEY_BACK KEY_ESC       /* Cx */
 
@@ -111,12 +116,13 @@ typedef enum {
   KIND_SOURCE, /* .c, compiled by CC.ELF */
   KIND_IMAGE,
   KIND_SOUND,
+  KIND_TEXT,  /* opened by TEXTVIEWER.ELF */
   KIND_OTHER,
 } kind_t;
 
 static const char *const s_kind_fg[] = {
     [KIND_UP] = "\x1b[97m",    [KIND_BUILTIN] = "\x1b[96m", [KIND_DIR] = "\x1b[97m",
-    [KIND_ELF] = "\x1b[96m",   [KIND_SCRIPT] = "\x1b[92m", [KIND_SOURCE] = "\x1b[32m", [KIND_IMAGE] = "\x1b[93m",   [KIND_SOUND] = "\x1b[95m",
+    [KIND_ELF] = "\x1b[96m",   [KIND_SCRIPT] = "\x1b[92m", [KIND_SOURCE] = "\x1b[32m", [KIND_IMAGE] = "\x1b[93m",   [KIND_SOUND] = "\x1b[95m", [KIND_TEXT] = "\x1b[37m",
     [KIND_OTHER] = "\x1b[90m",
 };
 
@@ -177,6 +183,7 @@ static const char *ext_of(const char *name) {
 static kind_t file_kind(const char *name) {
   static const char *const images[] = {"PNG", "BMP", "JPG", "JPEG", "GIF"};
   static const char *const sounds[] = {"WAV", "MP3", "OGG", "FLAC"};
+  static const char *const texts[] = {"TXT", "MD", "LOG", "INI", "CFG", "CSV", "JSON", "H"};
   const char *ext = ext_of(name);
   if (strcasecmp(ext, "ELF") == 0) {
     return KIND_ELF;
@@ -195,6 +202,11 @@ static kind_t file_kind(const char *name) {
   for (size_t i = 0; i < sizeof(sounds) / sizeof(sounds[0]); i++) {
     if (strcasecmp(ext, sounds[i]) == 0) {
       return KIND_SOUND;
+    }
+  }
+  for (size_t i = 0; i < sizeof(texts) / sizeof(texts[0]); i++) {
+    if (strcasecmp(ext, texts[i]) == 0) {
+      return KIND_TEXT;
     }
   }
   return KIND_OTHER;
@@ -590,6 +602,12 @@ void boot_select(macjr_tty_t *tty, const boot_builtin_t *builtins, int n_builtin
       case KEY_DOWN:
         macjr_tty_list_move(&s_list, 1);
         break;
+      case KEY_HOME:
+        macjr_tty_list_move(&s_list, -s_list.count);
+        break;
+      case KEY_END:
+        macjr_tty_list_move(&s_list, s_list.count);
+        break;
       case KEY_BACK:
         leave_dir();
         break;
@@ -608,7 +626,7 @@ void boot_select(macjr_tty_t *tty, const boot_builtin_t *builtins, int n_builtin
           ESP_LOGI(TAG, "%s (built in) selected", e->name);
           goto picked;
         } else if (e->kind == KIND_ELF || e->kind == KIND_SCRIPT || e->kind == KIND_SOURCE ||
-                   e->kind == KIND_SOUND || e->kind == KIND_IMAGE) {
+                   e->kind == KIND_SOUND || e->kind == KIND_IMAGE || e->kind == KIND_TEXT) {
           *builtin = NULL;
           snprintf(path, path_len, "%s/%s", s_cwd, e->name);
           save(DB_KEY_FILE, e->name);
