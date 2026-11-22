@@ -21,6 +21,9 @@
  * The chip keeps generating after the program ends. The settings are kept
  * in the config store (components/utils/db) as gen_f0..gen_f2=<Hz> and
  * gen_on=0|1 and restored at the next start.
+ *
+ * It also serves as the sample of the system log (logdev.h): every change
+ * and failure goes to /dev/log with the tag "si5351", for LOGVIEWER.
  */
 #include <fcntl.h>
 #include <stdarg.h>
@@ -34,6 +37,7 @@
 #include "db.h"
 #include "esp_log.h"
 #include "keyboard.h"
+#include "logdev.h"
 #include "macjr.h"
 #include "monitor.h"
 #include "sdr.h"
@@ -213,13 +217,21 @@ static void set_freq(void) {
   uint32_t hz = parse_hz(s_input);
   if (hz && (hz < SDR_GEN_MIN_HZ || hz > SDR_GEN_MAX_HZ)) {
     s_msg = "Out of range: 0.008-100 MHz";
+    log_write(LOG_WARN, TAG, "CLK%d: %s MHz is out of range", s_sel, s_input);
     return;
   }
   esp_err_t err = s_ok ? sdr_gen_set_freq(s_sel, hz) : ESP_ERR_INVALID_STATE;
   if (err != ESP_OK) {
     s_msg = "Setting failed";
     ESP_LOGE(TAG, "sdr_gen_set_freq(%d, %lu): %s", s_sel, (unsigned long)hz, esp_err_to_name(err));
+    log_write(LOG_ERROR, TAG, "CLK%d: setting %lu Hz failed: %s", s_sel, (unsigned long)hz, esp_err_to_name(err));
     return;
+  }
+  if (hz) {
+    log_write(LOG_INFO, TAG, "CLK%d %lu.%06lu MHz", s_sel, (unsigned long)(hz / 1000000),
+              (unsigned long)(hz % 1000000));
+  } else {
+    log_write(LOG_INFO, TAG, "CLK%d off", s_sel);
   }
   s_hz[s_sel] = hz;
   s_input[0] = '\0';
@@ -230,9 +242,11 @@ static void toggle(void) {
   esp_err_t err = s_ok ? sdr_gen_enable(!s_on) : ESP_ERR_INVALID_STATE;
   if (err != ESP_OK) {
     s_msg = "Switching failed";
+    log_write(LOG_ERROR, TAG, "switching the outputs %s failed: %s", s_on ? "off" : "on", esp_err_to_name(err));
     return;
   }
   s_on = !s_on;
+  log_write(LOG_INFO, TAG, "outputs %s", s_on ? "on" : "off");
   save(-1, s_on);
 }
 
@@ -286,6 +300,7 @@ static void start(void) {
   }
   if (!s_ok) {
     ESP_LOGE(TAG, "Si5351 init failed");
+    log_write(LOG_ERROR, TAG, "the Si5351 doesn't answer");
     return;
   }
   for (int ch = 0; ch < CH; ch++) {
@@ -297,6 +312,8 @@ static void start(void) {
   if (load(-1) && sdr_gen_enable(true) == ESP_OK) {
     s_on = true;
   }
+  log_write(LOG_DEBUG, TAG, "started: CLK0 %lu, CLK1 %lu, CLK2 %lu Hz, outputs %s", (unsigned long)s_hz[0],
+            (unsigned long)s_hz[1], (unsigned long)s_hz[2], s_on ? "on" : "off");
 }
 
 int main(int argc, char *argv[], macjr_tty_t *tty) {

@@ -43,6 +43,7 @@
 #include "freertos/task.h"
 #include "private/elf_symbol.h"
 #include "db.h"
+#include "logdev.h"
 #include "keyboard.h"
 #include "macjr.h"
 #include "mic.h"
@@ -208,6 +209,7 @@ void exec_exit(int status) {
 }
 
 esp_err_t exec_sdcard_open_raw(sdmmc_card_t **out) {
+  log_suspend(); /* its records go to the card first, then wait */
   db_close(); /* its files must not outlive the mount */
   s_card_taken = true;
   return sdcard_open_raw(out);
@@ -222,6 +224,7 @@ static void card_restore(void) {
   esp_err_t err = sdcard_close_raw();
   if (err == ESP_OK) {
     err = db_init();
+    log_resume();
   }
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "SD card not restored: %s", esp_err_to_name(err));
@@ -430,8 +433,18 @@ static esp_err_t spawn(macjr_tty_t *tty, const char *path, macjr_main_t entry, i
   /* our own keyboard queue, for the kill chord */
   int kbd = open(KBD_DEV_PATH, O_RDONLY | O_NONBLOCK);
   s_kill = false;
+  /* the task is named after the program ("SI5351_CONTROL"): the log
+   * stamps records with it */
+  char name[configMAX_TASK_NAME_LEN];
+  const char *base = path ? path : argv[0];
+  const char *slash = strrchr(base, '/');
+  snprintf(name, sizeof(name), "%s", slash ? slash + 1 : base);
+  char *dot = strrchr(name, '.');
+  if (dot && dot != name) {
+    *dot = '\0';
+  }
   TaskHandle_t task;
-  if (xTaskCreatePinnedToCore(spawn_task, "prog", EXEC_STACK_SIZE, &job, EXEC_PRIORITY, &task, EXEC_CORE) !=
+  if (xTaskCreatePinnedToCore(spawn_task, name, EXEC_STACK_SIZE, &job, EXEC_PRIORITY, &task, EXEC_CORE) !=
       pdPASS) {
     if (kbd >= 0) {
       close(kbd);

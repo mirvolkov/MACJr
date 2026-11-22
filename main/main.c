@@ -34,6 +34,7 @@
 #include "keyboard.h"
 #include "speaker.h"
 #include "db.h"
+#include "logdev.h"
 #include "monitor.h"
 #include "exec.h"
 #include "ir_rx.h"
@@ -203,6 +204,9 @@ void app_main(void) {
     ESP_LOGW(TAG, "sdcard_init failed, continuing without SD card");
   } else if (db_init() != ESP_OK) {
     ESP_LOGW(TAG, "db_init failed, continuing without config");
+  }
+  if (log_init() != ESP_OK) { /* after the db: the saved records come back */
+    ESP_LOGW(TAG, "log_init failed, continuing without /dev/log");
   }
 
   set_time_zone();

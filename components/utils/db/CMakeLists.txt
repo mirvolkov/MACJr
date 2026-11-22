@@ -10,7 +10,6 @@ idf_component_register(
        "flashdb/src/fdb.c"
        "flashdb/src/fdb_file.c"
        "flashdb/src/fdb_kvdb.c"
-       "flashdb/src/fdb_tsdb.c"
        "flashdb/src/fdb_utils.c"
   INCLUDE_DIRS "." "flashdb/inc"
   REQUIRES sdcard freertos vfs

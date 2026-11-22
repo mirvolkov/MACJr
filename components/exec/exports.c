@@ -23,6 +23,7 @@
 #include <unistd.h>
 
 #include "db.h"
+#include "logdev.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "esp_pthread.h"
@@ -93,6 +94,12 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(db_read),
   ESP_ELFSYM_EXPORT(db_update),
   ESP_ELFSYM_EXPORT(db_watch),
+
+  /* the system log (/dev/log: open, read, write, select through the
+   * calls below; log_open() and log_read() are inline) */
+  ESP_ELFSYM_EXPORT(log_write),
+  ESP_ELFSYM_EXPORT(log_vwrite),
+  ESP_ELFSYM_EXPORT(log_level_char),
   ESP_ELFSYM_EXPORT(speaker_write),
   ESP_ELFSYM_EXPORT(speaker_set_sample_rate),
   ESP_ELFSYM_EXPORT(speaker_sample_rate),

@@ -9,10 +9,6 @@
 /* Key-value databases (the db component) */
 #define FDB_USING_KVDB
 
-/* Time series databases: compiled in for logs later; unused code is
- * dropped by the linker */
-#define FDB_USING_TSDB
-
 /* Sector files via fopen/fread/fwrite/fclose */
 #define FDB_USING_FILE_LIBC_MODE
 
