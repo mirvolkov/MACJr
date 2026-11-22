@@ -172,7 +172,7 @@ static bool is_image(const char *path) {
 }
 
 /* A text file from the navigator opens in TEXTVIEWER.ELF <file>, which is
- * built on the board from SRC/TEXTVIEWER/textviewer.c. */
+ * built from apps/textviewer. */
 #define TEXTVIEWER_PATH EXEC_BIN_DIR "/TEXTVIEWER.ELF"
 
 static bool is_text(const char *path) {
