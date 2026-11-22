@@ -20,6 +20,7 @@ we fixed it.
 | 10 | [An IR port](10-ir-remote.md) | A receiver ported from MicroPython, an RMT transmitter, and programs that learn and send codes |
 | 11 | [On the air](11-wifi.md) | The Wi-Fi station and a program to join a network |
 | 16 | [A C compiler on the board](16-c-compiler.md) | TinyCC with a new Xtensa backend, its own ELF writer, a simulator to test it, and a text viewer built on the board |
+| 17 | [Copy, paste, delete](17-file-operations.md) | A file menu on F + В↑, an ordered chord, recursive copy and delete with progress and Cx to stop |
 
 For the compact list of every step so far, open issues and what comes
 next, see [roadmap.txt](roadmap.txt).

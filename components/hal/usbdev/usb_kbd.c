@@ -7,6 +7,7 @@
  *
  *   printable keys, Shift   ASCII 32-126 (US layout); Tab 9
  *   Enter                   В↑ (KEY_MK_ENTER)
+ *   Alt+Enter               F + В↑ (KEY_MK_F_ENTER), the file menu
  *   Esc, Backspace          Cx (KEY_ESC)
  *   ↑ / ↓                   П→x / x→П, the keys lists move with
  *   Home / End              ←ШГ / ШГ→, a list's first / last item
@@ -94,9 +95,14 @@ static void keyboard_report(const hid_keyboard_report_t *rep) {
   bool ctrl_alt = rep->modifier & (KEYBOARD_MODIFIER_LEFTCTRL | KEYBOARD_MODIFIER_RIGHTCTRL |
                                    KEYBOARD_MODIFIER_LEFTALT | KEYBOARD_MODIFIER_RIGHTALT |
                                    KEYBOARD_MODIFIER_LEFTGUI | KEYBOARD_MODIFIER_RIGHTGUI);
+  bool alt_only = (rep->modifier & (KEYBOARD_MODIFIER_LEFTALT | KEYBOARD_MODIFIER_RIGHTALT)) &&
+                  !(rep->modifier & (KEYBOARD_MODIFIER_LEFTCTRL | KEYBOARD_MODIFIER_RIGHTCTRL |
+                                     KEYBOARD_MODIFIER_LEFTGUI | KEYBOARD_MODIFIER_RIGHTGUI));
   for (int i = 0; i < 6; i++) {
     uint8_t kc = rep->keycode[i];
-    if (kc && !was_down(kc) && !ctrl_alt) {
+    if (kc && !was_down(kc) && alt_only && (kc == HID_KEY_ENTER || kc == HID_KEY_KEYPAD_ENTER)) {
+      keyboard_inject(KEY_MK_F_ENTER);
+    } else if (kc && !was_down(kc) && !ctrl_alt) {
       uint8_t code = translate(kc, shift);
       if (code) {
         keyboard_inject(code);

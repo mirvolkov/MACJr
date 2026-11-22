@@ -2,7 +2,6 @@ RTOS (real time must be kept for SDR if possible)
 - process model, memory paging, signal mechanism (IPC)
 - KERNEL - memory/process/fs management
 - unix-like app distribution model (compile, register, open by extension)
-- DOS - disk operations support
 
 Extensions:
 - extend external port with SPI

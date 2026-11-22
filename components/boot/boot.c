@@ -33,6 +33,23 @@
  * TEXTVIEWER.ELF), Cx goes up a directory. The selection is black on cyan,
  * as in DOS Navigator.
  *
+ * F + В↑ (Alt+Enter on a USB keyboard) opens the file menu on the
+ * selected entry, a window with its name in the top edge; a digit picks:
+ *
+ *   ╔═══════[NOTES.TXT]═══════╗
+ *   ║ 3  View / run            ║   as В↑
+ *   ║ 8  Delete                ║   asks first; a directory with all in it
+ *   ║ 4  Copy                  ║   remembers the entry (the clipboard)
+ *   ║ 5  Paste README.TXT      ║   only while something is copied
+ *   ╚══════════════════════════╝
+ *
+ * Paste copies the remembered file or directory (with everything in it)
+ * into the current directory, or into the selected directory when the
+ * menu was opened on one ("Paste into X"; on ".." into the parent). A name
+ * already there gets "_1", "_2", ... before its extension. Cx closes the
+ * menu, and stops a copy or a delete under way (the half-copied file is
+ * removed).
+ *
  * The directory is saved in the db (nav.dir) whenever it changes, and the
  * entry started from it (nav.file) when a program starts; after a reboot
  * the navigator opens there again, on that entry.
@@ -40,6 +57,7 @@
 #include "boot.h"
 
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -60,6 +78,7 @@
 #include "net.h"
 #include "sdcard.h"
 #include "tty/list.h"
+#include "tty/window.h"
 #include "usbdev.h"
 
 static const char *TAG = "boot";
@@ -70,6 +89,7 @@ static const char *TAG = "boot";
 #define KEY_END  KEY_MK_END    /* ШГ→ */
 #define KEY_OPEN KEY_MK_ENTER  /* В↑ */
 #define KEY_BACK KEY_ESC       /* Cx */
+#define KEY_MENU KEY_MK_F_ENTER /* F + В↑: file menu */
 
 #define COLS       40
 #define ROW_TOP    1 /* the top edge, with the header fields */
@@ -520,6 +540,7 @@ static void draw(macjr_tty_t *tty, const header_t *header) {
   macjr_display_flush(tty);
 }
 
+
 /* ---- the shell -------------------------------------------------------- */
 
 /* Wait up to POLL_MS for a key. The key, or -1 if none came. */
@@ -538,6 +559,522 @@ static int wait_key(int fd) {
   uint8_t key;
   return read(fd, &key, 1) == 1 ? key : -1;
 }
+
+/* ---- opening ---------------------------------------------------------- */
+
+/* В↑ on the selected entry: into a directory, or pick a program or a file
+ * for main.c to start. True if picked. */
+static bool open_selected(char *path, size_t path_len, const boot_builtin_t **builtin) {
+  if (s_list.sel < 0 || s_list.sel >= s_count) {
+    return false;
+  }
+  const entry_t *e = &s_ents[s_list.sel];
+  if (e->kind == KIND_UP) {
+    leave_dir();
+  } else if (e->kind == KIND_DIR) {
+    enter_dir(e->name);
+  } else if (e->kind == KIND_BUILTIN) {
+    *builtin = &s_builtins[e->builtin];
+    save(DB_KEY_FILE, e->name);
+    ESP_LOGI(TAG, "%s (built in) selected", e->name);
+    return true;
+  } else if (e->kind != KIND_OTHER) {
+    *builtin = NULL;
+    snprintf(path, path_len, "%s/%s", s_cwd, e->name);
+    save(DB_KEY_FILE, e->name);
+    ESP_LOGI(TAG, "%s selected", path);
+    return true;
+  }
+  return false;
+}
+
+/* ---- file operations (F + В↑) ---------------------------------------- */
+
+#define MENU_W    32
+#define MSG_W     34
+#define COPY_BUF  4096
+#define SHOW_STEP (64 * 1024) /* progress redrawn every 64 KB */
+
+typedef enum { OP_EXEC, OP_DEL, OP_COPY, OP_PASTE } op_t;
+
+static char s_clip[PATH_LEN + 260];    /* full path of the copied entry; "" = nothing copied */
+static char s_pa[PATH_LEN + 260];      /* working paths of a copy or a delete, */
+static char s_pb[PATH_LEN + 260];      /* grown and cut back as it goes down */
+
+/* 0-9 for a digit key (MK-52 or a USB keyboard's ASCII), else -1. */
+static int digit_of(int key) {
+  static const uint8_t mk[10] = {KEY_MK_0, KEY_MK_1, KEY_MK_2, KEY_MK_3, KEY_MK_4,
+                                 KEY_MK_5, KEY_MK_6, KEY_MK_7, KEY_MK_8, KEY_MK_9};
+  if (key >= '0' && key <= '9') {
+    return key - '0';
+  }
+  for (int i = 0; i < 10; i++) {
+    if (key == mk[i]) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+static const char *base_of(const char *path) {
+  const char *slash = strrchr(path, '/');
+  return slash ? slash + 1 : path;
+}
+
+static bool is_dir(const char *path) {
+  struct stat st;
+  return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+static bool exists(const char *path) {
+  struct stat st;
+  return stat(path, &st) == 0;
+}
+
+/* A modal window: draws itself over the navigator. */
+typedef void (*modal_draw_t)(macjr_tty_t *tty, const void *ctx);
+
+static void modal_show(macjr_tty_t *tty, modal_draw_t fn, const void *ctx, bool with_nav) {
+  if (with_nav) {
+    header_t h;
+    header_build(&h);
+    draw(tty, &h);
+  }
+  fn(tty, ctx);
+  macjr_display_flush(tty);
+}
+
+/* The next key for a modal window (not a chord); KEY_ESC with no
+ * keyboard. While the system monitor has the screen the keys are its;
+ * when it closes, the navigator and the window are drawn again. */
+static int modal_key(macjr_tty_t *tty, int fd, modal_draw_t fn, const void *ctx) {
+  if (fd < 0) {
+    return KEY_ESC;
+  }
+  bool monitor_was_open = false;
+  for (;;) {
+    int key = wait_key(fd);
+    if (monitor_is_open()) {
+      monitor_was_open = true;
+      continue;
+    }
+    if (monitor_was_open) {
+      monitor_was_open = false;
+      modal_show(tty, fn, ctx, true);
+    }
+    if (key >= 0 && !KBD_IS_CHORD(key)) {
+      return key;
+    }
+  }
+}
+
+/* A message: a title and up to three centered lines. */
+typedef struct {
+  const char *title;
+  const char *fg[3];
+  char line[3][COLS];
+} msg_t;
+
+static void msg_draw(macjr_tty_t *tty, const void *ctx) {
+  const msg_t *m = ctx;
+  macjr_tty_window_t win;
+  macjr_tty_window_center(tty, &win, MSG_W, 7);
+  macjr_tty_window_draw(tty, &win, m->title);
+  for (int i = 0; i < 3; i++) {
+    macjr_tty_window_text(tty, &win, i + 1, m->fg[i], true, m->line[i]);
+  }
+}
+
+/* Show an error until a key is pressed. */
+static void error_box(macjr_tty_t *tty, int fd, const char *what, const char *name, const char *why) {
+  msg_t m = {.title = what, .fg = {"97", "93", "90"}};
+  snprintf(m.line[0], COLS, "%s", name);
+  snprintf(m.line[1], COLS, "%s", why);
+  snprintf(m.line[2], COLS, "Press any key");
+  modal_show(tty, msg_draw, &m, false);
+  modal_key(tty, fd, msg_draw, &m);
+}
+
+/* A copy or a delete under way: progress on the screen, Cx stops it. */
+typedef struct {
+  macjr_tty_t *tty;
+  int fd;
+  const char *verb; /* "Copying", "Deleting" */
+  bool stopped;
+  int err;          /* errno of the failure, 0 if none */
+  char failed[COLS]; /* the name it failed on */
+} job_t;
+
+static void job_show(job_t *j, const char *name, uint64_t done) {
+  if (monitor_is_open()) {
+    return; /* its screen */
+  }
+  msg_t m = {.title = j->verb, .fg = {"97", "93", "90"}};
+  snprintf(m.line[0], COLS, "%s", name);
+  if (done) {
+    format_size(done > UINT32_MAX ? UINT32_MAX : (uint32_t)done, m.line[1], COLS);
+  }
+  snprintf(m.line[2], COLS, "Cx stops");
+  msg_draw(j->tty, &m);
+  macjr_display_flush(j->tty);
+}
+
+/* True once Cx has been pressed (other keys are dropped). */
+static bool job_stopped(job_t *j) {
+  if (j->stopped || j->fd < 0) {
+    return j->stopped;
+  }
+  for (;;) {
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(j->fd, &rfds);
+    struct timeval tv = {0, 0};
+    uint8_t key;
+    if (select(j->fd + 1, &rfds, NULL, NULL, &tv) <= 0 || read(j->fd, &key, 1) != 1) {
+      return false;
+    }
+    if (key == KEY_ESC && !monitor_is_open()) {
+      j->stopped = true;
+      return true;
+    }
+  }
+}
+
+static bool job_fail(job_t *j, const char *path) {
+  j->err = errno ? errno : EIO;
+  snprintf(j->failed, sizeof(j->failed), "%s", base_of(path));
+  return false;
+}
+
+/* Add "/name" to a working path, or false if it gets too long. */
+static bool path_push(char *path, const char *name) {
+  size_t len = strlen(path);
+  if (len + 1 + strlen(name) >= sizeof(s_pa)) {
+    errno = ENAMETOOLONG;
+    return false;
+  }
+  snprintf(path + len, sizeof(s_pa) - len, "/%s", name);
+  return true;
+}
+
+static void path_pop(char *path) {
+  *strrchr(path, '/') = '\0';
+}
+
+/* Copy file s_pa to s_pb; a partial copy is removed. */
+static bool copy_file(job_t *j, uint8_t *buf) {
+  job_show(j, base_of(s_pa), 0);
+  int in = open(s_pa, O_RDONLY);
+  if (in < 0) {
+    return job_fail(j, s_pa);
+  }
+  int out_fd = open(s_pb, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (out_fd < 0) {
+    job_fail(j, s_pb);
+    close(in);
+    return false;
+  }
+  bool ok = true;
+  uint64_t done = 0, shown = 0;
+  for (;;) {
+    ssize_t n = read(in, buf, COPY_BUF);
+    if (n == 0) {
+      break;
+    }
+    if (n < 0 || write(out_fd, buf, n) != n) {
+      if (n >= 0 && errno == 0) {
+        errno = ENOSPC; /* a short write: the card is full */
+      }
+      ok = job_fail(j, n < 0 ? s_pa : s_pb);
+      break;
+    }
+    done += n;
+    if (done - shown >= SHOW_STEP) {
+      shown = done;
+      job_show(j, base_of(s_pa), done);
+    }
+    if (job_stopped(j)) {
+      ok = false;
+      break;
+    }
+  }
+  close(in);
+  if (close(out_fd) != 0 && ok) {
+    ok = job_fail(j, s_pb);
+  }
+  if (!ok) {
+    unlink(s_pb);
+  }
+  return ok;
+}
+
+/* Copy s_pa (a file, or a directory with everything in it) to s_pb. */
+static bool copy_tree(job_t *j, uint8_t *buf) {
+  if (!is_dir(s_pa)) {
+    return copy_file(j, buf);
+  }
+  job_show(j, base_of(s_pa), 0);
+  if (mkdir(s_pb, 0755) != 0 && errno != EEXIST) {
+    return job_fail(j, s_pb);
+  }
+  DIR *dir = opendir(s_pa);
+  if (!dir) {
+    return job_fail(j, s_pa);
+  }
+  bool ok = true;
+  struct dirent *de;
+  while (ok && (de = readdir(dir)) != NULL) {
+    if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) {
+      continue;
+    }
+    if (!path_push(s_pa, de->d_name) || !path_push(s_pb, de->d_name)) {
+      ok = job_fail(j, de->d_name);
+      break;
+    }
+    ok = copy_tree(j, buf) && !job_stopped(j);
+    path_pop(s_pa);
+    path_pop(s_pb);
+  }
+  closedir(dir);
+  return ok;
+}
+
+/* Delete s_pa: a file, or a directory with everything in it. */
+static bool delete_tree(job_t *j) {
+  job_show(j, base_of(s_pa), 0);
+  if (!is_dir(s_pa)) {
+    return unlink(s_pa) == 0 || job_fail(j, s_pa);
+  }
+  for (;;) {
+    /* read the directory again after each removal: never delete under a
+     * readdir that is still going */
+    DIR *dir = opendir(s_pa);
+    if (!dir) {
+      return job_fail(j, s_pa);
+    }
+    char name[260] = "";
+    struct dirent *de;
+    while ((de = readdir(dir)) != NULL) {
+      if (strcmp(de->d_name, ".") != 0 && strcmp(de->d_name, "..") != 0) {
+        snprintf(name, sizeof(name), "%s", de->d_name);
+        break;
+      }
+    }
+    closedir(dir);
+    if (!name[0]) {
+      break;
+    }
+    if (!path_push(s_pa, name)) {
+      return job_fail(j, name);
+    }
+    bool ok = delete_tree(j);
+    path_pop(s_pa);
+    if (!ok || job_stopped(j)) {
+      return false;
+    }
+  }
+  return rmdir(s_pa) == 0 || job_fail(j, s_pa);
+}
+
+/* After a failure: what went wrong, until a key. */
+static void job_report(job_t *j, const char *what) {
+  if (j->stopped) {
+    return;
+  }
+  error_box(j->tty, j->fd, what, j->failed, strerror(j->err));
+}
+
+/* `base` in `dir` as s_pb, or with "_1", "_2", ... before its extension if
+ * that name is taken. False if all are. */
+static bool free_name(const char *dir, const char *base) {
+  const char *dot = strrchr(base, '.');
+  int stem = dot && dot != base ? (int)(dot - base) : (int)strlen(base);
+  for (int n = 0; n < 100; n++) {
+    if (n == 0) {
+      snprintf(s_pb, sizeof(s_pb), "%s/%s", dir, base);
+    } else {
+      snprintf(s_pb, sizeof(s_pb), "%s/%.*s_%d%s", dir, stem, base, n, base + stem);
+    }
+    if (!exists(s_pb)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static void do_delete(macjr_tty_t *tty, int fd, const entry_t *e) {
+  bool dir = e->kind == KIND_DIR;
+  msg_t m = {.title = "Delete", .fg = {"97", dir ? "93" : "90", "90"}};
+  snprintf(m.line[0], COLS, "%s", e->name);
+  snprintf(m.line[1], COLS, "%s", dir ? "and everything in it" : "");
+  snprintf(m.line[2], COLS, "8 delete    Cx cancel");
+  modal_show(tty, msg_draw, &m, true);
+  for (;;) {
+    int key = modal_key(tty, fd, msg_draw, &m);
+    if (key == KEY_ESC) {
+      return;
+    }
+    if (digit_of(key) == 8 || key == KEY_OPEN) {
+      break;
+    }
+  }
+  job_t j = {.tty = tty, .fd = fd, .verb = "Deleting"};
+  snprintf(s_pa, sizeof(s_pa), "%s/%s", s_cwd, e->name);
+  errno = 0;
+  bool ok = delete_tree(&j);
+  /* macOS leaves "._NAME" next to a file it wrote: it goes too */
+  snprintf(s_pa, sizeof(s_pa), "%s/._%s", s_cwd, e->name);
+  unlink(s_pa);
+  ESP_LOGI(TAG, "delete %s/%s: %s", s_cwd, e->name, ok ? "done" : j.stopped ? "stopped" : strerror(j.err));
+  if (!ok) {
+    job_report(&j, "Cannot delete");
+  }
+  if (s_clip[0] && !exists(s_clip)) {
+    s_clip[0] = '\0'; /* what was copied is gone */
+  }
+}
+
+/* Paste the clipboard into directory `dir`; the new name goes to `made`. */
+static void do_paste(macjr_tty_t *tty, int fd, const char *dir, char *made, size_t made_len) {
+  made[0] = '\0';
+  const char *base = base_of(s_clip);
+  if (!exists(s_clip)) {
+    error_box(tty, fd, "Cannot paste", base, "It is not there any more");
+    s_clip[0] = '\0';
+    return;
+  }
+  size_t clen = strlen(s_clip);
+  if (is_dir(s_clip) && strncmp(dir, s_clip, clen) == 0 && (dir[clen] == '\0' || dir[clen] == '/')) {
+    error_box(tty, fd, "Cannot paste", base, "Not into itself");
+    return;
+  }
+  if (!free_name(dir, base)) {
+    error_box(tty, fd, "Cannot paste", base, "Name taken");
+    return;
+  }
+  uint8_t *buf = malloc(COPY_BUF);
+  if (!buf) {
+    error_box(tty, fd, "Cannot paste", base, "Out of memory");
+    return;
+  }
+  job_t j = {.tty = tty, .fd = fd, .verb = "Copying"};
+  snprintf(s_pa, sizeof(s_pa), "%s", s_clip);
+  char target[PATH_LEN + 260];
+  snprintf(target, sizeof(target), "%s", s_pb);
+  modal_show(tty, msg_draw, &(msg_t){.title = "Copying"}, true);
+  errno = 0;
+  bool ok = copy_tree(&j, buf);
+  free(buf);
+  ESP_LOGI(TAG, "copy %s -> %s: %s", s_clip, target, ok ? "done" : j.stopped ? "stopped" : strerror(j.err));
+  if (!ok && is_dir(target)) {
+    /* a directory copy that didn't finish: take away what was made */
+    job_t undo = {.tty = tty, .fd = -1, .verb = "Removing"};
+    snprintf(s_pa, sizeof(s_pa), "%s", target);
+    delete_tree(&undo);
+  }
+  if (ok) {
+    snprintf(made, made_len, "%s", base_of(target));
+  } else {
+    job_report(&j, "Cannot copy");
+  }
+}
+
+/* The menu: the selected entry's name and the operations it allows. */
+typedef struct {
+  char title[COLS];
+  int n;
+  op_t op[4];
+  char text[4][COLS];
+} menu_t;
+
+static void menu_draw(macjr_tty_t *tty, const void *ctx) {
+  const menu_t *m = ctx;
+  macjr_tty_window_t win;
+  macjr_tty_window_center(tty, &win, MENU_W, m->n + 2);
+  macjr_tty_window_draw(tty, &win, m->title);
+  for (int i = 0; i < m->n; i++) {
+    macjr_tty_window_text(tty, &win, i, "97", false, m->text[i]);
+  }
+}
+
+static void menu_add(menu_t *m, op_t op, const char *fmt, const char *arg) {
+  m->op[m->n] = op;
+  snprintf(m->text[m->n], COLS, fmt, arg);
+  m->n++;
+}
+
+/* F + В↑: the file menu on the selected entry. True if it picked a
+ * program or a file to open (as В↑ would). */
+static bool file_menu(macjr_tty_t *tty, int fd, char *path, size_t path_len, const boot_builtin_t **builtin) {
+  const entry_t *e = s_list.sel >= 0 && s_list.sel < s_count ? &s_ents[s_list.sel] : NULL;
+  bool file_op = e && e->kind != KIND_UP && e->kind != KIND_BUILTIN;
+
+  /* where a paste goes: into the selected directory, else here */
+  char dest[PATH_LEN + 260];
+  snprintf(dest, sizeof(dest), "%s", s_cwd);
+  if (e && e->kind == KIND_DIR) {
+    snprintf(dest, sizeof(dest), "%s/%s", s_cwd, e->name);
+  } else if (e && e->kind == KIND_UP) {
+    *strrchr(dest, '/') = '\0';
+  }
+
+  menu_t m = {0};
+  snprintf(m.title, sizeof(m.title), "%s", e ? e->name : shown_path());
+  if (e && e->kind != KIND_OTHER) {
+    menu_add(&m, OP_EXEC, "%s", e->kind == KIND_DIR || e->kind == KIND_UP ? "3  Open" : "3  View / run");
+  }
+  if (file_op) {
+    menu_add(&m, OP_DEL, "%s", "8  Delete");
+    menu_add(&m, OP_COPY, "%s", "4  Copy");
+  }
+  if (s_clip[0]) {
+    if (e && (e->kind == KIND_DIR || e->kind == KIND_UP)) {
+      menu_add(&m, OP_PASTE, "5  Paste into %s", e->name);
+    } else {
+      menu_add(&m, OP_PASTE, "5  Paste %s", base_of(s_clip));
+    }
+  }
+  if (m.n == 0) {
+    return false;
+  }
+
+  static const int key_of[] = {[OP_EXEC] = 3, [OP_DEL] = 8, [OP_COPY] = 4, [OP_PASTE] = 5};
+  modal_show(tty, menu_draw, &m, false);
+  int op = -1;
+  while (op < 0) {
+    int key = modal_key(tty, fd, menu_draw, &m);
+    if (key == KEY_ESC) {
+      return false;
+    }
+    for (int i = 0; i < m.n; i++) {
+      if (digit_of(key) == key_of[m.op[i]]) {
+        op = m.op[i];
+      }
+    }
+  }
+
+  switch ((op_t)op) {
+    case OP_EXEC:
+      return open_selected(path, path_len, builtin);
+    case OP_DEL:
+      do_delete(tty, fd, e);
+      scan(NULL);
+      break;
+    case OP_COPY:
+      snprintf(s_clip, sizeof(s_clip), "%s/%s", s_cwd, e->name);
+      ESP_LOGI(TAG, "copied %s", s_clip);
+      break;
+    case OP_PASTE: {
+      char made[260];
+      do_paste(tty, fd, dest, made, sizeof(made));
+      /* show the copy if it landed here */
+      scan(made[0] && strcmp(dest, s_cwd) == 0 ? made : (e ? e->name : NULL));
+      break;
+    }
+  }
+  return false;
+}
+
 
 void boot_select(macjr_tty_t *tty, const boot_builtin_t *builtins, int n_builtins, char *path, size_t path_len,
                  const boot_builtin_t **builtin) {
@@ -582,7 +1119,7 @@ void boot_select(macjr_tty_t *tty, const boot_builtin_t *builtins, int n_builtin
       draw_bottom(tty, &header);
       macjr_display_flush(tty);
     }
-    if (key < 0 || KBD_IS_CHORD(key)) {
+    if (key < 0 || (KBD_IS_CHORD(key) && key != KEY_MENU)) {
       continue;
     }
     if (!s_scan_ok) {
@@ -611,30 +1148,16 @@ void boot_select(macjr_tty_t *tty, const boot_builtin_t *builtins, int n_builtin
       case KEY_BACK:
         leave_dir();
         break;
-      case KEY_OPEN: {
-        if (s_list.sel < 0) {
-          break;
-        }
-        const entry_t *e = &s_ents[s_list.sel];
-        if (e->kind == KIND_UP) {
-          leave_dir();
-        } else if (e->kind == KIND_DIR) {
-          enter_dir(e->name);
-        } else if (e->kind == KIND_BUILTIN) {
-          *builtin = &s_builtins[e->builtin];
-          save(DB_KEY_FILE, e->name);
-          ESP_LOGI(TAG, "%s (built in) selected", e->name);
-          goto picked;
-        } else if (e->kind == KIND_ELF || e->kind == KIND_SCRIPT || e->kind == KIND_SOURCE ||
-                   e->kind == KIND_SOUND || e->kind == KIND_IMAGE || e->kind == KIND_TEXT) {
-          *builtin = NULL;
-          snprintf(path, path_len, "%s/%s", s_cwd, e->name);
-          save(DB_KEY_FILE, e->name);
-          ESP_LOGI(TAG, "%s selected", path);
+      case KEY_OPEN:
+        if (open_selected(path, path_len, builtin)) {
           goto picked;
         }
         break;
-      }
+      case KEY_MENU:
+        if (file_menu(tty, fd, path, path_len, builtin)) {
+          goto picked;
+        }
+        break;
       default:
         continue;
     }

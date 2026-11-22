@@ -95,17 +95,21 @@ static const uint16_t s_row_cols[KBD_ROWS] = {
     COL_BIT(5) | COL_BIT(6), 0x3FF, 0x3FF, 0x3FF,
 };
 
-/* Two keys pressed together, published as `code`. */
+/* Two keys pressed together, published as `code`. An `ordered` chord
+ * needs `a` first: `b` alone is then sent at once, not held back (В↑,
+ * which every list opens with, must not wait for its release). */
 typedef struct {
     uint8_t a, b, code;
+    bool ordered;
 } kbd_chord_t;
 
 static const kbd_chord_t s_chords[] = {
-    { KEY_MK_F, KEY_MK_K, KEY_MK_F_K },
-    { KEY_MK_F, KEY_ESC, KEY_MK_F_ESC },
-    { KEY_MK_F, KEY_MK_UPDOWN, KEY_MK_F_UPDOWN },
-    { KEY_MK_F, KEY_MK_A_UP, KEY_MK_F_A_UP },
-    { KEY_MK_F, KEY_MK_BP, KEY_MK_F_BP },
+    { KEY_MK_F, KEY_MK_K, KEY_MK_F_K, false },
+    { KEY_MK_F, KEY_ESC, KEY_MK_F_ESC, false },
+    { KEY_MK_F, KEY_MK_UPDOWN, KEY_MK_F_UPDOWN, false },
+    { KEY_MK_F, KEY_MK_A_UP, KEY_MK_F_A_UP, false },
+    { KEY_MK_F, KEY_MK_BP, KEY_MK_F_BP, false },
+    { KEY_MK_F, KEY_MK_ENTER, KEY_MK_F_ENTER, true },
 };
 
 typedef struct {
@@ -244,7 +248,7 @@ static uint8_t chord_of(uint8_t a, uint8_t b)
 {
     for (size_t i = 0; i < sizeof(s_chords) / sizeof(s_chords[0]); i++) {
         const kbd_chord_t *ch = &s_chords[i];
-        if ((ch->a == a && ch->b == b) || (ch->a == b && ch->b == a)) {
+        if ((ch->a == a && ch->b == b) || (!ch->ordered && ch->a == b && ch->b == a)) {
             return ch->code;
         }
     }
@@ -254,7 +258,7 @@ static uint8_t chord_of(uint8_t a, uint8_t b)
 static bool starts_chord(uint8_t code)
 {
     for (size_t i = 0; i < sizeof(s_chords) / sizeof(s_chords[0]); i++) {
-        if (s_chords[i].a == code || s_chords[i].b == code) {
+        if (s_chords[i].a == code || (!s_chords[i].ordered && s_chords[i].b == code)) {
             return true;
         }
     }
