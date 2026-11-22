@@ -175,14 +175,12 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
     if (fd >= 0 && read(fd, &key, 1) == 1 && !KBD_IS_CHORD(key) && !monitor_is_open()) {
       break;
     }
-    if (!monitor_is_open()) { /* the monitor owns the screen while open */
-      if (rainbow) {
-        draw_rainbow(tty);
-      } else {
-        draw_matrix(tty);
-      }
-      macjr_display_flush(tty);
+    if (rainbow) {
+      draw_rainbow(tty);
+    } else {
+      draw_matrix(tty);
     }
+    macjr_display_flush(tty);
     sys_delay(FRAME_MS);
   }
 

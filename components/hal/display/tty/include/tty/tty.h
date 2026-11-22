@@ -36,8 +36,17 @@ ssize_t macjr_tty_write(macjr_tty_t *tty, const void *buf, size_t len);
 /* Keyboard driver calls this (task context recommended). */
 void macjr_kbd_inject(macjr_tty_t *tty, const uint8_t *data, size_t len);
 
-/* After writes / injects, call periodically to push dirty cells to the panel. */
+/* After writes / injects, call periodically to push dirty cells to the panel.
+ * Only the front tty (macjr_tty_set_front) reaches the panel; on any other
+ * the changed rows wait until it comes to the front. */
 void macjr_display_flush(macjr_tty_t *tty);
+
+/* Several ttys may share one display, like Linux virtual consoles: make
+ * `tty` the one shown, repaint it whole, and return the one shown before
+ * (NULL if none was chosen: then every tty draws). The others go on taking
+ * writes in the background. The system monitor has a tty of its own and
+ * switches to it and back. */
+macjr_tty_t *macjr_tty_set_front(macjr_tty_t *tty);
 
 /* Copy of the whole console (cells, cursor, colors) for overlays such as the
  * system monitor: save it, draw something else, then restore it. */

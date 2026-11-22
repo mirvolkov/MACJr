@@ -96,24 +96,49 @@ void macjr_kbd_inject(macjr_tty_t *tty, const uint8_t *data, size_t len) {
   macjr_ldisc_rx(&tty->ldisc, data, len);
 }
 
+/* The tty on the display (NULL: all of them draw), and the lock that makes
+ * "am I in front?" and the blit one step against macjr_tty_set_front().
+ * Lock order: a tty's vc_lock, then s_front_lock. */
+static macjr_tty_t *s_front;
+static SemaphoreHandle_t s_front_lock;
+
 /* Push every row touched since the last flush to the panel, then clear the
  * dirty bitmap. Always re-marks the cursor's row dirty first so the cursor
  * (drawn as part of the blit) stays visually in sync even if nothing else
- * on that row changed. */
+ * on that row changed. A tty in the background keeps its dirty rows. */
 void macjr_display_flush(macjr_tty_t *tty) {
   if (!tty || !tty->hal) {
     return;
   }
   xSemaphoreTake(tty->vc_lock, portMAX_DELAY);
-  if (tty->vc.cursor_r >= 0 && tty->vc.cursor_r < tty->vc.rows) {
-    int cr = tty->vc.cursor_r;
-    tty->row_dirty[cr >> 5] |= (1u << (cr & 31));
+  xSemaphoreTake(s_front_lock, portMAX_DELAY);
+  if (!s_front || s_front == tty) {
+    if (tty->vc.cursor_r >= 0 && tty->vc.cursor_r < tty->vc.rows) {
+      int cr = tty->vc.cursor_r;
+      tty->row_dirty[cr >> 5] |= (1u << (cr & 31));
+    }
+    macjr_hal_blit_vc(tty->hal, &tty->vc, tty->row_dirty, tty->glyph_w, tty->glyph_h, tty->row_dirty_words);
+    for (int i = 0; i < tty->row_dirty_words; i++) {
+      tty->row_dirty[i] = 0;
+    }
   }
-  macjr_hal_blit_vc(tty->hal, &tty->vc, tty->row_dirty, tty->glyph_w, tty->glyph_h, tty->row_dirty_words);
-  for (int i = 0; i < tty->row_dirty_words; i++) {
-    tty->row_dirty[i] = 0;
-  }
+  xSemaphoreGive(s_front_lock);
   xSemaphoreGive(tty->vc_lock);
+}
+
+macjr_tty_t *macjr_tty_set_front(macjr_tty_t *tty) {
+  if (!tty) {
+    return NULL;
+  }
+  xSemaphoreTake(s_front_lock, portMAX_DELAY);
+  macjr_tty_t *prev = s_front;
+  s_front = tty;
+  xSemaphoreGive(s_front_lock);
+  xSemaphoreTake(tty->vc_lock, portMAX_DELAY);
+  memset(tty->row_dirty, 0xFF, (size_t)tty->row_dirty_words * sizeof(uint32_t));
+  xSemaphoreGive(tty->vc_lock);
+  macjr_display_flush(tty);
+  return prev;
 }
 
 /* Allocate a tty sized to fill hal's pixel surface with glyph_w x glyph_h
@@ -123,6 +148,13 @@ void macjr_display_flush(macjr_tty_t *tty) {
 macjr_tty_t *macjr_tty_create(macjr_hal_display_t *hal, int glyph_w, int glyph_h) {
   if (!hal || glyph_w <= 0 || glyph_h <= 0) {
     return NULL;
+  }
+
+  if (!s_front_lock) { /* the first tty is made before any task draws */
+    s_front_lock = xSemaphoreCreateMutex();
+    if (!s_front_lock) {
+      return NULL;
+    }
   }
 
   macjr_tty_t *tty = (macjr_tty_t *)calloc(1, sizeof(*tty));
@@ -201,6 +233,11 @@ void macjr_tty_destroy(macjr_tty_t *tty) {
   if (!tty) {
     return;
   }
+  xSemaphoreTake(s_front_lock, portMAX_DELAY);
+  if (s_front == tty) {
+    s_front = NULL;
+  }
+  xSemaphoreGive(s_front_lock);
   if (tty->raw_q) {
     vQueueDelete(tty->raw_q);
   }

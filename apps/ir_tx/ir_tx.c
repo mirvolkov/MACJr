@@ -72,7 +72,6 @@ typedef struct {
 
 static macjr_tty_t *s_tty;
 static int s_kbd = -1;
-static volatile bool s_redraw; /* set when the monitor closes */
 
 static char *s_text; /* IR_FILE, read whole */
 static code_t s_codes[MAX_CODES];
@@ -361,9 +360,6 @@ static void code_item(int index, char *text, size_t len, void *ctx) {
 }
 
 static void draw_all(void) {
-  if (monitor_is_open()) {
-    return; /* redrawn when it closes */
-  }
   out("\x1b[?25l\x1b[0m\x1b[2J");
   macjr_tty_header(s_tty, "IR sender");
   macjr_tty_list_draw(s_tty, &s_list);
@@ -407,11 +403,6 @@ static bool on_key(uint8_t key) {
   return true;
 }
 
-static void on_monitor_closed(void *ctx) {
-  (void)ctx;
-  s_redraw = true;
-}
-
 int main(int argc, char *argv[], macjr_tty_t *tty) {
   s_tty = tty;
   s_status[0] = '\0';
@@ -420,7 +411,6 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
   macjr_tty_list_init(&s_list, ROW_LIST, 1, COLS, LIST_ROWS, code_item, NULL);
   load();
   macjr_tty_list_set_count(&s_list, s_count);
-  monitor_set_redraw_cb(on_monitor_closed, NULL);
 
   s_kbd = open(KBD_DEV_PATH, O_RDONLY);
   draw_all();
@@ -439,15 +429,12 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
       sys_delay(POLL_MS);
     }
     if (monitor_is_open()) {
-      continue; /* the monitor owns the screen */
+      continue; /* the keys are the monitor's */
     }
     if (key >= 0 && !KBD_IS_CHORD(key)) {
       if (!on_key((uint8_t)key)) {
         break;
       }
-      draw_all();
-    } else if (s_redraw) {
-      s_redraw = false;
       draw_all();
     }
   }

@@ -11,6 +11,10 @@
  * The app owns the items; the list asks for an item's text by index when
  * it draws, so a list can be longer than the window. Moving the selection
  * past the window's edge scrolls it.
+ *
+ * A list can also be a plain view (a page of text that scrolls, as in the
+ * system monitor): macjr_tty_list_scroll() and macjr_tty_list_draw_view()
+ * move and draw it with no selection; the thumb follows the window.
  */
 #ifndef MACJR_TTY_LIST_H
 #define MACJR_TTY_LIST_H
@@ -59,6 +63,16 @@ bool macjr_tty_list_move(macjr_tty_list_t *list, int delta);
 /* Draw the window: scroll bar and visible items. Leaves the colors reset;
  * doesn't flush. */
 void macjr_tty_list_draw(macjr_tty_t *tty, const macjr_tty_list_t *list);
+
+/* View mode: scroll the window by `delta` lines (negative: up), stopping
+ * at the ends; the same keys as macjr_tty_list_move(). True if it moved.
+ * Keeps the selection on the top line, so macjr_tty_list_set_count()
+ * leaves the window where it is. Draws nothing. */
+bool macjr_tty_list_scroll(macjr_tty_list_t *list, int delta);
+
+/* View mode: draw like macjr_tty_list_draw(), but no line is selected and
+ * the thumb shows where the window is. */
+void macjr_tty_list_draw_view(macjr_tty_t *tty, const macjr_tty_list_t *list);
 
 #ifdef __cplusplus
 }

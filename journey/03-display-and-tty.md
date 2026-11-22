@@ -81,6 +81,42 @@ needed help: the USB drive pauses its status lines on `monitor_is_open()`, and
 the PNG viewer gets a redraw callback, because its picture is not in the text
 cells.
 
+### A console of its own
+
+Saving and restoring the screen had a cost. While the monitor was up,
+programs had to stop drawing, or they would paint over it. When it closed
+they needed a callback to catch up, and most programs ended up with the
+same "skip while open, redraw after" code.
+
+So the monitor became a console app like any other, with a second tty on
+the same display, as Linux has virtual consoles. Only the *front* tty
+(`macjr_tty_set_front()`) reaches the panel. The others keep taking output
+and remember their dirty rows. F + K brings the monitor's tty to the front,
+and the chord again brings the program's back, repainted in full and up to
+date. The program never stopped. The notice windows (screenshot, USB
+keyboard, Wi-Fi) work the same way. The program's screen is copied onto the
+monitor's tty, the window is drawn there, and the display switches over.
+
+The redraw callback went away, along with the skip-drawing code in six
+programs and the navigator. `monitor_is_open()` now only means "the keys
+are the monitor's". The image viewer is the one exception, since it draws
+on the display directly. It checks `monitor_is_open()` and draws its
+picture again when the monitor closes.
+
+The page got a new look too. It has the navigator's double frame, and the
+key hint sits in the bottom edge. The two cores share one htop-style line
+with the figure inside the meter. The page scrolls as a plain view, with no
+selected line (`macjr_tty_list_scroll()` and `macjr_tty_list_draw_view()`).
+
+```
+╔═════════[MacJr system monitor]═════════╗
+║0[|||          23%] 1[||||||||    61%]  ▲
+║                                        ▒
+║Memory                                  ■
+║SRAM     212 /   330 KB used            ▒
+╚═[F+K close  P->x x->P scroll]══════════╝
+```
+
 ## A window that scrolls
 
 Networks don't fit a 40x15 screen for long, so the tty got its first real

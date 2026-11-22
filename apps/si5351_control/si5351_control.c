@@ -59,7 +59,6 @@
 static const char *TAG = "si5351";
 
 static macjr_tty_t *s_tty;
-static volatile bool s_redraw; /* set when the monitor closes */
 
 static bool s_ok;          /* the chip answered */
 static bool s_on;          /* outputs enabled */
@@ -118,9 +117,6 @@ static void draw_input(void) {
 }
 
 static void draw_all(void) {
-  if (monitor_is_open()) {
-    return; /* redrawn when it closes */
-  }
   out("\x1b[?25l\x1b[0m\x1b[2J");
   macjr_tty_header(s_tty, "Si5351 generator");
   draw_outputs();
@@ -281,11 +277,6 @@ static bool on_key(uint8_t code) {
   return true;
 }
 
-static void on_monitor_closed(void *ctx) {
-  (void)ctx;
-  s_redraw = true;
-}
-
 /* Start the chip and restore the saved channels and on/off state. */
 static void start(void) {
   s_ok = sdr_gen_init() == ESP_OK;
@@ -314,7 +305,6 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
   s_input[0] = '\0';
   s_msg = NULL;
   start();
-  monitor_set_redraw_cb(on_monitor_closed, NULL);
   draw_all();
 
   int fd = open(KBD_DEV_PATH, O_RDONLY);
@@ -333,15 +323,12 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
       sys_delay(POLL_MS);
     }
     if (monitor_is_open()) {
-      continue; /* the monitor owns the screen, and the keys with it */
+      continue; /* the keys are the monitor's */
     }
     if (key >= 0 && !KBD_IS_CHORD(key)) {
       if (!on_key((uint8_t)key)) {
         break;
       }
-      draw_all();
-    } else if (s_redraw) {
-      s_redraw = false;
       draw_all();
     }
   }

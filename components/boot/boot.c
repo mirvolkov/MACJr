@@ -645,24 +645,17 @@ static void modal_show(macjr_tty_t *tty, modal_draw_t fn, const void *ctx, bool 
 }
 
 /* The next key for a modal window (not a chord); KEY_ESC with no
- * keyboard. While the system monitor has the screen the keys are its;
- * when it closes, the navigator and the window are drawn again. */
+ * keyboard. While the system monitor is open the keys are its. */
 static int modal_key(macjr_tty_t *tty, int fd, modal_draw_t fn, const void *ctx) {
+  (void)tty;
+  (void)fn;
+  (void)ctx;
   if (fd < 0) {
     return KEY_ESC;
   }
-  bool monitor_was_open = false;
   for (;;) {
     int key = wait_key(fd);
-    if (monitor_is_open()) {
-      monitor_was_open = true;
-      continue;
-    }
-    if (monitor_was_open) {
-      monitor_was_open = false;
-      modal_show(tty, fn, ctx, true);
-    }
-    if (key >= 0 && !KBD_IS_CHORD(key)) {
+    if (key >= 0 && !KBD_IS_CHORD(key) && !monitor_is_open()) {
       return key;
     }
   }
@@ -706,9 +699,6 @@ typedef struct {
 } job_t;
 
 static void job_show(job_t *j, const char *name, uint64_t done) {
-  if (monitor_is_open()) {
-    return; /* its screen */
-  }
   msg_t m = {.title = j->verb, .fg = {"97", "93", "90"}};
   snprintf(m.line[0], COLS, "%s", name);
   if (done) {
@@ -1099,21 +1089,15 @@ void boot_select(macjr_tty_t *tty, const boot_builtin_t *builtins, int n_builtin
   header_t header;
   header_build(&header);
   draw(tty, &header);
-  bool monitor_was_open = false;
 
   for (;;) {
     int key = wait_key(fd);
     if (monitor_is_open()) {
-      monitor_was_open = true; /* it owns the screen; keys are for it */
-      continue;
+      key = -1; /* the keys are the monitor's */
     }
     header_t now;
     header_build(&now);
-    if (monitor_was_open) {
-      monitor_was_open = false;
-      header = now;
-      draw(tty, &header);
-    } else if (memcmp(&now, &header, sizeof(now)) != 0) {
+    if (memcmp(&now, &header, sizeof(now)) != 0) {
       header = now;
       draw_header(tty, &header);
       draw_bottom(tty, &header);

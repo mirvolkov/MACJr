@@ -78,6 +78,8 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(macjr_tty_list_set_count),
   ESP_ELFSYM_EXPORT(macjr_tty_list_move),
   ESP_ELFSYM_EXPORT(macjr_tty_list_draw),
+  ESP_ELFSYM_EXPORT(macjr_tty_list_scroll),
+  ESP_ELFSYM_EXPORT(macjr_tty_list_draw_view),
   ESP_ELFSYM_EXPORT(macjr_tty_window_center),
   ESP_ELFSYM_EXPORT(macjr_tty_window_draw),
   ESP_ELFSYM_EXPORT(macjr_tty_window_text),
@@ -85,7 +87,6 @@ const struct esp_elfsym g_exec_exports[] = {
   /* system monitor */
   ESP_ELFSYM_EXPORT(monitor_is_open),
   ESP_ELFSYM_EXPORT(monitor_set_enabled),
-  ESP_ELFSYM_EXPORT(monitor_set_redraw_cb),
 
   /* board HALs */
   ESP_ELFSYM_EXPORT(db_create),

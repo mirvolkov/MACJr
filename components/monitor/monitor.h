@@ -31,12 +31,16 @@ extern "C" {
  * monitor_set_wifi_cb (the radio/db policy lives there, not here). */
 #define WIFI_KEY KEY_MK_F_BP
 
-/* Start the monitor task. From then on MONITOR_KEY, pressed at any time,
- * saves the screen of `tty` and shows CPU load per core, internal RAM and
- * PSRAM usage, chip temperature and SD card status, refreshed every second.
- * Pressing it again restores the saved screen. Call after keyboard_init()
- * and once `tty` exists. */
-esp_err_t monitor_start(macjr_tty_t *tty);
+/* Start the monitor task. `tty` is the programs' tty, `own` a second one
+ * on the same display that only the monitor draws on. From then on
+ * MONITOR_KEY, pressed at any time, brings `own` to the front with CPU
+ * load per core, internal RAM and PSRAM usage, chip temperature and SD
+ * card status, refreshed every second; pressing it again brings `tty`
+ * back (macjr_tty_set_front). Programs keep writing to `tty` meanwhile.
+ * The notice windows (screenshot, USB keyboard, Wi-Fi) show on `own` too,
+ * over a copy of the screen. Call after keyboard_init() and once both
+ * ttys exist. */
+esp_err_t monitor_start(macjr_tty_t *tty, macjr_tty_t *own);
 
 /* A screenshot in two steps, so that something can be shown on screen
  * between them without ending up in the picture. screenshot_grab() copies
@@ -53,15 +57,12 @@ bool screenshot_write(macjr_tty_t *tty, uint8_t *rgb, char *msg, size_t len);
  * or back on. On by default. */
 void monitor_set_enabled(bool on);
 
-/* True while the monitor is on screen. Apps that keep updating the tty
- * must skip drawing then, or they would paint over the monitor. */
+/* True while the monitor (or one of its notices) is on screen. The keys
+ * are the monitor's then: programs reading /dev/kbrd themselves ignore
+ * them. Drawing needs no care, it goes to the program's tty in the
+ * background. A program that draws on the display HAL itself (the image
+ * viewer) repaints when this goes back to false. */
 bool monitor_is_open(void);
-
-/* Called (from the monitor task) right after the monitor closes and the
- * tty screen is restored. Apps use it to repaint anything they drew
- * outside the tty, or that changed while the monitor was open. */
-typedef void (*monitor_redraw_cb_t)(void *ctx);
-void monitor_set_redraw_cb(monitor_redraw_cb_t cb, void *ctx);
 
 /* Toggle Wi-Fi: called (from the monitor task) when WIFI_KEY is pressed.
  * Returns the new state (true = Wi-Fi now on). The monitor shows a notice

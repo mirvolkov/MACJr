@@ -77,22 +77,41 @@ bool macjr_tty_list_move(macjr_tty_list_t *list, int delta) {
   return true;
 }
 
-/* Row of the thumb in the window: on the track between the arrows, as far
- * along as the selection is along the list. */
-static int thumb_row(const macjr_tty_list_t *list) {
-  int track = list->height - 2;
-  if (list->sel <= 0 || list->count <= 1 || track <= 1) {
-    return 1;
+bool macjr_tty_list_scroll(macjr_tty_list_t *list, int delta) {
+  int max_top = list->count - list->height;
+  int top = list->top + delta;
+  if (top > max_top) {
+    top = max_top;
   }
-  return 1 + (list->sel * (track - 1) + (list->count - 1) / 2) / (list->count - 1);
+  if (top < 0) {
+    top = 0;
+  }
+  if (list->count > 0) {
+    list->sel = top;
+  }
+  if (top == list->top) {
+    return false;
+  }
+  list->top = top;
+  return true;
 }
 
-/* The scroll bar cell of row `y`, with its colors. */
-static int bar_cell(const macjr_tty_list_t *list, int y, char *out, size_t len) {
+/* Row of the thumb in the window: on the track between the arrows, as far
+ * along as `pos` is in 0..`last`. */
+static int thumb_row(const macjr_tty_list_t *list, int pos, int last) {
+  int track = list->height - 2;
+  if (pos <= 0 || last <= 0 || track <= 1) {
+    return 1;
+  }
+  return 1 + (pos * (track - 1) + last / 2) / last;
+}
+
+/* The scroll bar cell of row `y`, with its colors; the thumb on `thumb`. */
+static int bar_cell(const macjr_tty_list_t *list, int y, int thumb, char *out, size_t len) {
   if (y == 0 || y == list->height - 1) {
     return snprintf(out, len, COLOR_BAR_CELL "%c", y == 0 ? BAR_UP : BAR_DOWN);
   }
-  if (y == thumb_row(list)) {
+  if (y == thumb) {
     return snprintf(out, len, COLOR_BAR_CELL "%c", BAR_THUMB);
   }
   return snprintf(out, len, COLOR_BAR_TRACK "%c", BAR_TRACK);
@@ -126,7 +145,8 @@ static int put_text(char *out, const char *text, int width, bool colors) {
   return n + width - cells;
 }
 
-void macjr_tty_list_draw(macjr_tty_t *tty, const macjr_tty_list_t *list) {
+/* Both draws: `sel` is the highlighted item (-1: none). */
+static void draw(macjr_tty_t *tty, const macjr_tty_list_t *list, int sel, int thumb) {
   int text_w = list->width - 1;
   if (text_w > ITEM_MAX - 1) {
     text_w = ITEM_MAX - 1;
@@ -135,15 +155,23 @@ void macjr_tty_list_draw(macjr_tty_t *tty, const macjr_tty_list_t *list) {
     char buf[2 * ITEM_MAX + 48]; /* escapes, then padding up to text_w */
     int i = list->top + y;
     int n = snprintf(buf, sizeof(buf), "\x1b[%d;%dH%s", list->row + y, list->col,
-                     i == list->sel ? COLOR_SELECT : COLOR_ITEM);
+                     i == sel ? COLOR_SELECT : COLOR_ITEM);
     char text[ITEM_MAX] = "";
     if (i < list->count) {
       list->item(i, text, sizeof(text), list->ctx);
     }
-    n += put_text(buf + n, text, text_w, i != list->sel);
-    n += bar_cell(list, y, buf + n, sizeof(buf) - n);
+    n += put_text(buf + n, text, text_w, i != sel);
+    n += bar_cell(list, y, thumb, buf + n, sizeof(buf) - n);
     macjr_tty_write(tty, buf, n);
   }
   const char *reset = "\x1b[0m";
   macjr_tty_write(tty, reset, strlen(reset));
+}
+
+void macjr_tty_list_draw(macjr_tty_t *tty, const macjr_tty_list_t *list) {
+  draw(tty, list, list->sel, thumb_row(list, list->sel, list->count - 1));
+}
+
+void macjr_tty_list_draw_view(macjr_tty_t *tty, const macjr_tty_list_t *list) {
+  draw(tty, list, -1, thumb_row(list, list->top, list->count - list->height));
 }

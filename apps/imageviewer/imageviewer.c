@@ -5,17 +5,23 @@
  *
  * It decodes the image row by row and draws it scaled to fit, keeping the
  * aspect ratio. One of the agreed exceptions to console-only apps: it draws on
- * the display HAL behind the tty. Cx returns to the navigator.
+ * the display HAL behind the tty. Cx returns to the navigator. The system
+ * monitor and its notices repaint the display from their own tty, so the
+ * picture is drawn again each time they close.
  *
  * Scaling is nearest-neighbor and streams with the decoder: target row ty
  * shows source row ty * h / th, so as source rows arrive in order each one is
  * drawn zero times (shrinking), once, or several times (enlarging).
  */
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
+#include <unistd.h>
 
 #include "esp_log.h"
+#include "keyboard.h"
 #include "macjr.h"
 #include "monitor.h"
 #include "png.h"
@@ -119,12 +125,35 @@ static void show_image(macjr_tty_t *tty, macjr_hal_display_t *display) {
   }
 }
 
-/* The picture is not part of the tty: draw it again after the monitor. */
-static void redraw_image(void *ctx) {
-  (void)ctx;
-  if (s_display) {
-    show_image(s_tty, s_display);
+#define POLL_MS 100 /* how soon the picture is back after the monitor */
+
+/* Wait for Cx; draw the picture again whenever the monitor has been on
+ * screen (it isn't part of the tty, which is what comes back). */
+static void wait_esc(void) {
+  int fd = open(KBD_DEV_PATH, O_RDONLY);
+  if (fd < 0) {
+    while (sys_getkey() != SYS_KEY_ESC) {
+    }
+    return;
   }
+  bool was_open = false;
+  for (;;) {
+    fd_set keys;
+    FD_ZERO(&keys);
+    FD_SET(fd, &keys);
+    struct timeval timeout = {.tv_sec = 0, .tv_usec = POLL_MS * 1000};
+    uint8_t key = 0;
+    bool got = select(fd + 1, &keys, NULL, NULL, &timeout) > 0 && read(fd, &key, 1) == 1;
+    bool open_now = monitor_is_open();
+    if (was_open && !open_now) {
+      show_image(s_tty, s_display);
+    }
+    was_open = open_now;
+    if (got && !open_now && key == KEY_ESC) {
+      break;
+    }
+  }
+  close(fd);
 }
 
 /* Show the picture until Cx, then return to the navigator. */
@@ -140,9 +169,6 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
   s_path = argv[1];
 
   show_image(tty, macjr_tty_display(tty));
-  monitor_set_redraw_cb(redraw_image, NULL);
-  while (sys_getkey() != SYS_KEY_ESC) {
-  }
-  monitor_set_redraw_cb(NULL, NULL); /* the callback goes away with us */
+  wait_esc();
   return 0;
 }

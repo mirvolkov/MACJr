@@ -72,7 +72,6 @@ typedef enum {
 
 static macjr_tty_t *s_tty;
 static int s_kbd = -1;
-static volatile bool s_redraw; /* set when the monitor closes */
 
 static net_ap_t s_aps[MAX_APS];
 static int s_count = -1; /* -1: not scanned yet / scan failed */
@@ -160,9 +159,6 @@ static void draw_window(void) {
 }
 
 static void draw_all(void) {
-  if (monitor_is_open()) {
-    return; /* redrawn when it closes */
-  }
   out("\x1b[?25l\x1b[0m\x1b[2J");
   macjr_tty_header(s_tty, "Wi-Fi");
   macjr_tty_list_draw(s_tty, &s_list);
@@ -219,10 +215,8 @@ static void scan(void) {
   s_count = 1; /* nothing to explain under "Scanning..." */
   macjr_tty_list_set_count(&s_list, 0);
   draw_all();
-  if (!monitor_is_open()) {
-    at(ROW_LIST, 1, "\x1b[93mScanning...\x1b[0m");
-    macjr_display_flush(s_tty);
-  }
+  at(ROW_LIST, 1, "\x1b[93mScanning...\x1b[0m");
+  macjr_display_flush(s_tty);
   s_count = net_wifi_scan(s_aps, MAX_APS);
   macjr_tty_list_set_count(&s_list, s_count < 0 ? 0 : s_count);
   s_list.sel = s_count > 0 ? 0 : -1;
@@ -349,16 +343,10 @@ static bool on_key(uint8_t key) {
   return true;
 }
 
-static void on_monitor_closed(void *ctx) {
-  (void)ctx;
-  s_redraw = true;
-}
-
 int main(int argc, char *argv[], macjr_tty_t *tty) {
   s_tty = tty;
   s_screen = SCREEN_LIST;
   macjr_tty_list_init(&s_list, ROW_LIST, 1, COLS, LIST_ROWS, ap_item, NULL);
-  monitor_set_redraw_cb(on_monitor_closed, NULL);
   load_saved();
 
   s_kbd = open(KBD_DEV_PATH, O_RDONLY);
@@ -372,12 +360,7 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
       }
       draw_all();
     }
-    if (s_redraw) {
-      s_redraw = false;
-      draw_all();
-    }
   }
-  monitor_set_redraw_cb(NULL, NULL);
   if (s_kbd >= 0) {
     close(s_kbd);
     s_kbd = -1;

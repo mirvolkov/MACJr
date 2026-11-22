@@ -66,7 +66,6 @@ typedef struct {
 } code_t;
 
 static macjr_tty_t *s_tty;
-static volatile bool s_redraw; /* set when the monitor closes */
 
 static code_t s_last;   /* the last command received */
 static bool s_have_last;
@@ -267,11 +266,6 @@ static bool on_key(uint8_t key) {
   return true;
 }
 
-static void on_monitor_closed(void *ctx) {
-  (void)ctx;
-  s_redraw = true;
-}
-
 int main(int argc, char *argv[], macjr_tty_t *tty) {
   s_tty = tty;
   s_status[0] = '\0';
@@ -283,7 +277,6 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
   }
 
   int fd = open(KBD_DEV_PATH, O_RDONLY);
-  monitor_set_redraw_cb(on_monitor_closed, NULL);
   draw_all();
 
   for (;;) {
@@ -312,11 +305,7 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
       full = was_open || s_window; /* the window opened, changed or closed */
       dirty = true;
     }
-    if (monitor_is_open()) {
-      continue; /* the monitor owns the screen */
-    }
-    if (s_redraw || full) {
-      s_redraw = false;
+    if (full) {
       draw_all();
     } else if (dirty && !s_window) {
       draw_last();

@@ -200,7 +200,7 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
             }
         }
 
-        if (monitor_is_open()) {                /* the monitor owns the screen */
+        if (monitor_is_open()) {                /* paused under the monitor */
             sys_delay(50);
             continue;
         }

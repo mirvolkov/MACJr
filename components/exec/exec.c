@@ -230,7 +230,7 @@ static void card_restore(void) {
 
 /* ---- sys_* API -------------------------------------------------------- */
 
-/* The monitor owns the screen and the keys while it is open. */
+/* The keys are the monitor's while it is open. */
 static void wait_monitor_closed(void) {
   while (monitor_is_open()) {
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -310,7 +310,6 @@ static void program_cleanup(void) {
     close(s_kbd);
     s_kbd = -1;
   }
-  monitor_set_redraw_cb(NULL, NULL);
   monitor_set_enabled(true);
   usbdev_stop();
   mic_uac_stop();

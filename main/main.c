@@ -189,9 +189,12 @@ static bool is_text(const char *path) {
   return false;
 }
 
-static void start_monitor(macjr_tty_t *tty) {
-  if (monitor_start(tty) != ESP_OK) {
+/* The monitor is a console of its own on the same display. */
+static void start_monitor(macjr_tty_t *tty, macjr_hal_display_t *display) {
+  macjr_tty_t *own = macjr_tty_create(display, 8, 16);
+  if (!own || monitor_start(tty, own) != ESP_OK) {
     ESP_LOGW(TAG, "monitor_start failed");
+    macjr_tty_destroy(own);
   }
 }
 
@@ -237,7 +240,8 @@ void app_main(void) {
   struct macjr_winsize *ws = macjr_tty_winsize(tty);
   ESP_LOGI(TAG, "tty up: %ux%u chars on %ux%u px", ws->ws_col, ws->ws_row, ws->ws_xpixel, ws->ws_ypixel);
 
-  start_monitor(tty);
+  macjr_tty_set_front(tty);
+  start_monitor(tty, display);
   monitor_set_wifi_cb(wifi_toggle); /* F+БП toggles Wi-Fi, with a notice */
 
   for (;;) {

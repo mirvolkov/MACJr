@@ -24,9 +24,10 @@
  *
  * F and ↑↓ pressed together save a screenshot to SHOTS/ on the SD card.
  *
- * While the system monitor (F and K together) is open it owns the screen: sys_getkey()
- * waits until it closes, so a program that draws after a key press never
- * paints over it.
+ * The system monitor (F and K together) is a console of its own: while it
+ * is open the display shows its tty, and the program's tty goes on taking
+ * output in the background, shown again when the monitor closes. The keys
+ * are the monitor's meanwhile: sys_getkey() waits until it closes.
  *
  * Besides this API a program may use the C library functions and the
  * firmware's HAL calls the loader exports (components/exec/exec.c lists
