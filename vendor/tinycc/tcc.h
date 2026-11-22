@@ -1742,6 +1742,11 @@ ST_FUNC void gen_increment_tcov (SValue *sv);
 ST_FUNC void gen_clear_cache(void);
 #endif
 
+/* ------------ xtensa-gen.c ------------ */
+#ifdef TCC_TARGET_XTENSA
+ST_FUNC void gen_va_start(void);
+#endif
+
 /* ------------ c67-gen.c ------------ */
 #ifdef TCC_TARGET_C67
 #endif

@@ -5984,6 +5984,15 @@ ST_FUNC void unary(void)
 	vstore();
         break;
 #endif
+#ifdef TCC_TARGET_XTENSA
+    case TOK_builtin_va_start:
+        parse_builtin_params(0, "ee");
+        vpop();         /* the last named argument: not needed */
+        gen_va_start(); /* stores into ap and pops it */
+        vpushi(0);
+        vtop->type.t = VT_VOID;
+        break;
+#endif
 #ifdef TCC_TARGET_X86_64
 #ifdef TCC_TARGET_PE
     case TOK_builtin_va_start:

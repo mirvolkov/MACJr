@@ -1,6 +1,7 @@
 /* tests.c -- checks the code cc generates: build it (open it in the
  * navigator), then run tests.elf. Each line is a group of checks; a
  * failing check shows its number. */
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <macjr.h>
@@ -212,6 +213,113 @@ static void t_call(void)
     check(strcmp(buf, "1234567890123") == 0, 6);
 }
 
+/* --- variadic functions: va_arg across the registers and the stack --- */
+static int vsum(int n, ...)
+{
+    va_list ap;
+    int s = 0;
+    va_start(ap, n);
+    while (n--)
+        s += va_arg(ap, int);
+    va_end(ap);
+    return s;
+}
+
+/* i int, L long long, p struct point, c char */
+static long long vmix(const char *types, ...)
+{
+    va_list ap;
+    long long s = 0;
+    struct point p;
+    va_start(ap, types);
+    for (; *types; types++) {
+        switch (*types) {
+        case 'i': s = s * 10 + va_arg(ap, int); break;
+        case 'L': s = s * 10 + va_arg(ap, long long); break;
+        case 'c': s = s * 10 + (char)va_arg(ap, int); break;
+        case 'p':
+            p = va_arg(ap, struct point);
+            s = s * 100 + p.x * 10 + p.y;
+            break;
+        }
+    }
+    va_end(ap);
+    return s;
+}
+
+/* named arguments past the registers */
+static int vlate(int a, int b, int c, int d, int e, int f, int g, ...)
+{
+    va_list ap;
+    int x, y;
+    va_start(ap, g);
+    x = va_arg(ap, int);
+    y = va_arg(ap, int);
+    va_end(ap);
+    return a + b + c + d + e + f + g + 10 * x + 100 * y;
+}
+
+/* a struct returned through the hidden pointer, and &last */
+static struct big vbig(int n, ...)
+{
+    va_list ap;
+    struct big b;
+    int i;
+    memset(&b, 0, sizeof(b));
+    va_start(ap, n);
+    for (i = 0; i < n; i++)
+        b.v[i] = va_arg(ap, int);
+    va_end(ap);
+    b.c = *&n;
+    return b;
+}
+
+static int vtwice(int n, ...)
+{
+    va_list ap, aq;
+    int s = 0, i;
+    va_start(ap, n);
+    va_copy(aq, ap);
+    for (i = 0; i < n; i++)
+        s += va_arg(ap, int);
+    for (i = 0; i < n; i++)
+        s += 10 * va_arg(aq, int);
+    va_end(aq);
+    va_end(ap);
+    return s;
+}
+
+static int vformat(char *buf, int size, const char *fmt, ...)
+{
+    va_list ap;
+    int n;
+    va_start(ap, fmt);
+    n = vsnprintf(buf, size, fmt, ap);
+    va_end(ap);
+    return n;
+}
+
+static void t_vararg(void)
+{
+    char buf[32];
+    struct point p = {3, 4};
+    struct big b;
+    group("varargs");
+    check(vsum(0) == 0 && vsum(1, 5) == 5, 1);
+    check(vsum(5, 1, 2, 3, 4, 5) == 15, 2);
+    check(vsum(9, 1, 2, 3, 4, 5, 6, 7, 8, 9) == 45, 3);
+    check(vmix("iL", 1, 2LL) == 12, 4);
+    check(vmix("iiiiL", 1, 2, 3, 4, 5LL) == 12345, 5); /* L on the stack */
+    check(vmix("iLiLi", 1, 2LL, 3, 4LL, 5) == 12345, 6);
+    check(vmix("pci", p, 'x', 7) == 34 * 100 + 'x' * 10 + 7, 7);
+    check(vlate(1, 2, 3, 4, 5, 6, 7, 8, 9) == 28 + 80 + 900, 8);
+    b = vbig(3, 7, 8, 9);
+    check(b.v[0] == 7 && b.v[2] == 9 && b.v[3] == 0 && b.c == 3, 9);
+    check(vtwice(3, 1, 2, 3) == 66, 10);
+    vformat(buf, sizeof(buf), "%d %s %lld %x", -7, "va", 1234567890123LL, 254);
+    check(strcmp(buf, "-7 va 1234567890123 fe") == 0, 11);
+}
+
 int main(int argc, char *argv[], macjr_tty_t *tty)
 {
     s_tty = tty;
@@ -223,6 +331,7 @@ int main(int argc, char *argv[], macjr_tty_t *tty)
     t_llong();
     t_mem();
     t_call();
+    t_vararg();
     snprintf(s_line, sizeof(s_line), "\r\n\r\n%s%d of %d checks passed",
              s_fails ? "\x1b[91m" : "\x1b[92m", s_checks - s_fails, s_checks);
     print(s_line);

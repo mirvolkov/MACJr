@@ -385,8 +385,38 @@ class Sim:
         return self.ll(w, 0) >> w[2]
 
     def fw_snprintf(self, w):
-        buf, size, fmt = w[0], w[1], self.cstr(w[2]).decode("latin-1")
-        i, out, k = 3, "", 0
+        def arg(size):
+            if size == 8:
+                arg.i += arg.i & 1  # 64-bit varargs start on an even word
+                v = w[arg.i] | w[arg.i + 1] << 32
+            else:
+                v = w[arg.i]
+            arg.i += size // 4
+            return v
+        arg.i = 3
+        return self.format(w[0], w[1], w[2], arg)
+
+    def fw_vsnprintf(self, w):
+        # w[3..5] is GCC's Xtensa va_list {__va_stk, __va_reg, __va_ndx}
+        stk, reg, ndx = w[3], w[4], w[5]
+
+        def arg(size):
+            orig = (arg.ndx + 7) & ~7 if size == 8 else arg.ndx
+            arg.ndx = orig + size
+            if arg.ndx <= 24:
+                base = reg
+            else:
+                if orig <= 24:
+                    arg.ndx = 32 + size
+                base = stk
+            a = base + arg.ndx - size
+            return self.r32(a) | (self.r32(a + 4) << 32 if size == 8 else 0)
+        arg.ndx = ndx
+        return self.format(w[0], w[1], w[2], arg)
+
+    def format(self, buf, size, fmt, arg):
+        fmt = self.cstr(fmt).decode("latin-1")
+        out, k = "", 0
         while k < len(fmt):
             c = fmt[k]
             k += 1
@@ -403,14 +433,11 @@ class Sim:
                 out += "%"
                 continue
             if "ll" in spec:
-                i += i & 1  # 64-bit varargs start on an even word
-                v = self.ll(w, i)
-                i += 2
+                v = arg(8)
                 if conv == "d":
                     v = sext(v, 64)
             else:
-                v = w[i]
-                i += 1
+                v = arg(4)
                 if conv == "d":
                     v = s32(v)
             pyspec = spec.replace("l", "")
@@ -425,7 +452,6 @@ class Sim:
         b = out.encode("latin-1")[:max(size - 1, 0)] + b"\0"
         self.mem[buf:buf + len(b)] = b
         return len(out)
-
 
 def main():
     sim = Sim(sys.argv[1])

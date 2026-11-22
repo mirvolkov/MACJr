@@ -25,4 +25,13 @@
 #ifndef __TCC_PP__
 #define __builtin_offsetof(type, field) ((__SIZE_TYPE__)&((type *)0)->field)
 #define __builtin_extract_return_addr(x) x
+/* GCC's Xtensa va_list, so it can be passed to the firmware's vsnprintf():
+ * __va_ndx counts bytes into the arguments; up to 24 they are in __va_reg
+ * (the six argument registers, saved by the prologue), from 32 on in
+ * __va_stk (32 bytes below the stack arguments). See stdarg.h. */
+typedef struct {
+    int *__va_stk;
+    int *__va_reg;
+    int __va_ndx;
+} __builtin_va_list;
 #endif

@@ -23,8 +23,12 @@
  *  an inline literal word with an R_XTENSA_32 relocation, jumped over and
  *  read with L32R. Calls are L32R a8 + CALLX8 a8.
  *
- *  Not supported (yet): floating point, variadic function definitions
- *  (calling variadic functions works), VLAs, inline assembly.
+ *  Variadic functions: va_list is GCC's {__va_stk, __va_reg, __va_ndx}
+ *  (see stdarg.h), so one can be handed to the firmware's vsnprintf(). The
+ *  prologue saves all of a2..a7 in one 24-byte area, the named arguments
+ *  included, and va_start() points __va_reg at it.
+ *
+ *  Not supported (yet): floating point, VLAs, inline assembly.
  */
 
 #ifdef TARGET_DEFS_ONLY
@@ -99,6 +103,7 @@ static const unsigned char phys_reg[NB_REGS - 1] = {10, 11, 12, 13, 14, 15, 2, 3
 static int func_prolog_ind, func_max_out, n_arg_save;
 static unsigned char arg_save_reg[ARG_REGS];
 static int arg_save_loc[ARG_REGS];
+static int va_reg_loc, va_ndx; /* variadic: register save area, first __va_ndx */
 
 static void no_float(void)
 {
@@ -647,13 +652,26 @@ ST_FUNC void gfunc_prolog(Sym *func_sym)
     for (i = 0; i < PROLOG_SIZE; i += 3)
         i_nop(); /* replaced in gfunc_epilog() */
 
+    if (func_var) {
+        /* all six argument registers in a row, for va_arg() */
+        loc = -ARG_REGS * 4;
+        va_reg_loc = loc;
+        for (i = 0; i < ARG_REGS; i++)
+            save_arg(i, va_reg_loc + 4 * i);
+    }
+
     if ((func_vt.t & VT_BTYPE) == VT_STRUCT) {
         CType ret;
         int ra, rs;
         if (gfunc_sret(&func_vt, func_var, &ret, &ra, &rs) == 0) {
-            loc -= 4;
-            func_vc = loc;
-            save_arg(w++, loc);
+            if (func_var) {
+                func_vc = va_reg_loc;
+            } else {
+                loc -= 4;
+                func_vc = loc;
+                save_arg(w, loc);
+            }
+            w++;
         }
     }
     while ((sym = sym->next) != NULL) {
@@ -662,18 +680,40 @@ ST_FUNC void gfunc_prolog(Sym *func_sym)
             w++;
         if (w < ARG_REGS && w + words > ARG_REGS)
             w = ARG_REGS;
-        if (w < ARG_REGS) {
+        if (w >= ARG_REGS) {
+            gfunc_set_param(sym, 32 + (w - ARG_REGS) * 4, 0);
+        } else if (func_var) {
+            gfunc_set_param(sym, va_reg_loc + 4 * w, 0);
+        } else {
             loc = (loc - words * 4) & -align;
             for (i = 0; i < words; i++)
                 save_arg(w + i, loc + 4 * i);
             gfunc_set_param(sym, loc, 0);
-        } else {
-            gfunc_set_param(sym, 32 + (w - ARG_REGS) * 4, 0);
         }
         w += words;
     }
-    if (func_var)
-        tcc_error("variadic function definitions are not supported yet");
+    /* GCC's va_start: past the named words; once on the stack, 32 bytes
+       above __va_stk (which points 32 below the stack arguments) */
+    va_ndx = w * 4 + (w >= ARG_REGS ? 8 : 0);
+}
+
+/* va_start(ap, last): vtop is the va_list lvalue ap. Fills in the three
+   words and pops it. */
+ST_FUNC void gen_va_start(void)
+{
+    int p;
+    if (!func_var)
+        tcc_error("va_start used in a function with fixed arguments");
+    gaddrof();
+    vtop->type = char_pointer_type;
+    p = preg(gv(RC_INT));
+    emit_addi(A_T, A_FP, FP_BIAS);              /* stack arguments - 32 */
+    mem_access(M_S32I, A_T, p, 0, 4);
+    emit_addi(A_T, A_FP, FP_BIAS + va_reg_loc); /* saved a2..a7 */
+    mem_access(M_S32I, A_T, p, 4, 4);
+    load_const(A_T, va_ndx);
+    mem_access(M_S32I, A_T, p, 8, 4);
+    vtop--;
 }
 
 ST_FUNC void gfunc_epilog(void)
