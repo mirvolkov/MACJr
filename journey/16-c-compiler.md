@@ -119,7 +119,44 @@ column-only escape (`ESC [ n G`). Then CC on the board compiled the same
 source into an ELF that was byte for byte the one the Mac build made, and
 that ELF went to `/BIN`.
 
+## Functions that take "..."
+
+Calling `snprintf()` always worked; writing a function of your own with
+`...` didn't. The usual board-side helper, "move to a row, print, clear the
+rest", had to be spelled out at every call:
+
+```c
+static void line(int r, const char *fmt, ...)
+{
+    va_list ap;
+    printf("\x1b[%d;1H", r);
+    va_start(ap, fmt);
+    vprintf(fmt, ap);
+    va_end(ap);
+    printf("\x1b[0m\x1b[K");
+}
+```
+
+For that `va_list` has to be the one GCC uses, because it goes on to the
+firmware's `vsnprintf()`. On Xtensa it is a struct of three words: where
+the stack arguments start, where the register arguments were saved, and
+an index into them. A variadic function's prologue now saves `a2` to `a7`
+in one area, `va_start` is a compiler builtin that fills in the struct, and
+`va_arg` is a macro with GCC's rules: align the index for 8-byte types, take
+the argument from the registers if it ends within the first 24 bytes,
+otherwise from the stack, never split, and the first one on the stack moves
+the index to 32. Each rule was checked against Espressif GCC's output.
+`tests.c` gained a varargs group of eleven checks: mixed `int` and
+`long long`, a `long long` pushed onto the stack, nine arguments, `va_copy`,
+and a `va_list` handed to `vsnprintf()`. The simulator passes all 62
+checks.
+
+`printf()` itself now prints on the program's screen, through `/dev/tty`
+([story 18](18-dev.md)). `SRC/lines.c` is the example: a status panel
+redrawn in place, one `line()` call per row.
+
 **Result:** C programs written, compiled and run on the board, and a compiler
-backend tested on the host before it reaches the chip. Not there yet: floating
-point, variadic function definitions, variable-length arrays and inline
+backend tested on the host before it reaches the chip. Variadic functions
+and `printf()` pass in the simulator; on the board they are still to be
+tried. Not there yet: floating point, variable-length arrays and inline
 assembly.

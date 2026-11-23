@@ -40,20 +40,21 @@ to `.3`, behind the same API. FlashDB 2.2.0 is vendored unmodified under
 - **Migration.** On first start `db_init()` imports the old `config.db` once,
   keeping keys the database already has, and renames it `config.old`.
 
-## Watching the database
+## Listening to the database
 
 The [keyboard's device pattern](01-keyboard.md) gives the store notifications:
 
 ```c
-int w = db_watch("radio.");      /* opens /dev/db/radio. */
+int w = db_listen("radio.");     /* opens /dev/db/radio. */
 /* ... select() on w together with the keyboard ... */
 read(w, buf, sizeof buf);        /* "radio.freq\n" */
 ```
 
 Every successful change of a key with that prefix queues one `key\n` line. Each
-watch has its own 256-byte queue. If a slow reader overflows it, the queue is
+listener has its own 256-byte queue. If a slow reader overflows it, the queue is
 replaced by a single `*\n` line, meaning "changes were lost, read everything
-again".
+again". (The call was first named `db_watch()`; it became `db_listen()`
+with the `/dev` work in [story 18](18-dev.md).)
 
 ## Surviving an unmount
 

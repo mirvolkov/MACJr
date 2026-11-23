@@ -19,8 +19,9 @@ we fixed it.
 | 9 | [Programs from the SD card](09-programs.md) | ELF apps in PSRAM on the second core, and how to kill them cleanly |
 | 10 | [An IR port](10-ir-remote.md) | A receiver ported from MicroPython, an RMT transmitter, and programs that learn and send codes |
 | 11 | [On the air](11-wifi.md) | The Wi-Fi station and a program to join a network |
-| 16 | [A C compiler on the board](16-c-compiler.md) | TinyCC with a new Xtensa backend, its own ELF writer, a simulator to test it, and a text viewer built on the board |
+| 16 | [A C compiler on the board](16-c-compiler.md) | TinyCC with a new Xtensa backend, its own ELF writer, a simulator to test it, a text viewer built on the board, and `...` functions |
 | 17 | [Copy, paste, delete](17-file-operations.md) | A file menu on F + В↑, an ordered chord, recursive copy and delete with progress and Cx to stop |
+| 18 | [/dev: the terminal as a file](18-dev.md) | `/dev/tty`, `printf()` on the screen, descriptors 0 to 2, a full VFS table, and a listable `/dev` |
 
 For the compact list of every step so far, open issues and what comes
 next, see [roadmap.txt](roadmap.txt).
