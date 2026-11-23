@@ -19,6 +19,7 @@
 #include <sys/select.h>
 #include <sys/stat.h>
 
+#include "devfs.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_vfs.h"
@@ -517,6 +518,7 @@ esp_err_t log_init(void) {
     heap_caps_free(ring);
     return err;
   }
+  devfs_add("log", false);
   if (xTaskCreate(flush_task, "logflush", FLUSH_STACK, NULL, FLUSH_PRIO, NULL) != pdPASS) {
     ESP_LOGW(TAG, "no flush task: records stay in memory");
   }

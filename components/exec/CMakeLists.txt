@@ -2,8 +2,8 @@
 # and exports the sys_* API of sdk/include/macjr.h and the firmware
 # functions in exports.c to them.
 idf_component_register(
-  SRCS "exec.c" "exports.c"
+  SRCS "exec.c" "exports.c" "ttydev.c"
   INCLUDE_DIRS "." "../../sdk/include"
-  REQUIRES display keyboard monitor sdcard esp_timer spi_flash db logdev mic sdr usbdev png ir net speaker pthread
+  REQUIRES display keyboard monitor sdcard esp_timer spi_flash db logdev mic sdr usbdev png ir net speaker pthread vfs devfs
   PRIV_REQUIRES espressif__elf_loader
 )

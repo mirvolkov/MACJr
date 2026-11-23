@@ -11,7 +11,7 @@
  * One recursive mutex covers each call, including FlashDB's own work, so
  * FlashDB gets no lock functions of its own.
  *
- * A successful change is announced to the watches (db_watch.c) after the
+ * A successful change is announced to the listeners (db_listen.c) after the
  * call has synced and let go of the mutex.
  */
 #include "db_priv.h"
@@ -93,7 +93,7 @@ static esp_err_t unlock(esp_err_t err) {
 /* Announce a change of `key` if `err` says it happened. */
 static esp_err_t changed(const char *key, esp_err_t err) {
   if (err == ESP_OK) {
-    db_watch_notify(key);
+    db_listen_notify(key);
   }
   return err;
 }
@@ -171,8 +171,8 @@ esp_err_t db_init(void) {
     xSemaphoreGiveRecursive(s_lock);
     return ESP_FAIL;
   }
-  if (db_watch_init() != ESP_OK) {
-    ESP_LOGW(TAG, "no change watches");
+  if (db_listen_init() != ESP_OK) {
+    ESP_LOGW(TAG, "no change listeners");
   }
   s_ready = true;
   import_old_text();

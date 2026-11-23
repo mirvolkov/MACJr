@@ -33,12 +33,12 @@ extern "C" {
 #define DB_KEY_MAX 63
 
 /* Create DB_DIR and open the database, creating its files if needed, and
- * register DB_WATCH_DEV. A config.db from the old key=value text store is
+ * register DB_LISTEN_DEV. A config.db from the old key=value text store is
  * imported once (keys the database doesn't have yet) and renamed to
  * config.old. Needs the SD card mounted. */
 esp_err_t db_init(void);
 
-/* Sync and close the database files. Watches stay open. */
+/* Sync and close the database files. Listeners stay open. */
 void db_close(void);
 
 /* Add a new pair. ESP_ERR_NOT_ALLOWED if the key already exists. */
@@ -56,21 +56,21 @@ esp_err_t db_update(const char *key, const char *value);
 esp_err_t db_delete(const char *key);
 
 /*
- * Watching for changes. A watch is a file descriptor on DB_WATCH_DEV:
+ * Listening for changes. A listener is a file descriptor on DB_LISTEN_DEV:
  * after each successful db_create(), db_update() or db_delete() of a key
  * starting with its prefix, read() on it gets a line "<key>\n". read()
  * blocks until there is one (or fails with EAGAIN under O_NONBLOCK), and
- * select() reports the watch readable while lines are waiting, so a
- * program can wait for changes together with keys. If a watch isn't read
+ * select() reports the listener readable while lines are waiting, so a
+ * program can wait for changes together with keys. If a listener isn't read
  * and its queue fills up, the queued lines are replaced by one "*\n":
- * changes were lost, read the values again. close() ends the watch.
+ * changes were lost, read the values again. close() ends the listener.
  */
-#define DB_WATCH_DEV "/dev/db"
-#define DB_MAX_WATCHES 4 /* open at the same time */
+#define DB_LISTEN_DEV "/dev/db"
+#define DB_MAX_LISTENERS 4 /* open at the same time */
 
-/* Watch keys starting with `prefix` ("" for all): opens
- * DB_WATCH_DEV "/<prefix>" read-only. The descriptor, or -1 (errno set). */
-int db_watch(const char *prefix);
+/* Listen to keys starting with `prefix` ("" for all): opens
+ * DB_LISTEN_DEV "/<prefix>" read-only. The descriptor, or -1 (errno set). */
+int db_listen(const char *prefix);
 
 #ifdef __cplusplus
 }

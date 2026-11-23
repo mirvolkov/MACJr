@@ -12,7 +12,10 @@
  * Draw on it with the tty API (tty/tty.h): macjr_tty_write(),
  * macjr_tty_header(), macjr_tty_winsize() and macjr_display_flush() --
  * output shows up on the panel after a flush. snprintf()/vsnprintf()
- * format text for it.
+ * format text for it. The same screen is the file /dev/tty and the
+ * program's descriptors 0, 1 and 2: printf(), vprintf(), puts(),
+ * putchar() and write(1, ...) print on it and show up at once, read(0, ...)
+ * gives the keys, a key code per byte (components/exec/ttydev.h).
  *
  * A program runs in its own task, normally on CPU1 at idle priority, until
  * main() returns or it calls sys_exit(); the firmware keeps running its
@@ -31,9 +34,10 @@
  *
  * Besides this API a program may use the C library functions and the
  * firmware's HAL calls the loader exports (components/exec/exec.c lists
- * them); printf() goes to the serial console, not to the screen. Not
- * available: thread-local data, errno included (picolibc keeps it per
- * task, and the loader can't relocate that).
+ * them). Other stdio calls (fprintf(stderr, ...), fputs(), fwrite()) go
+ * to the serial console. Not available: thread-local data, errno
+ * included (picolibc keeps it per task, and the loader can't relocate
+ * that).
  */
 #ifndef MACJR_H
 #define MACJR_H

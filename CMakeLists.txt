@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.22)
 
 # Each board backend under components/hal/ is a separate IDF component
 # (named after its directory). Hardware HALs live in components/hal/,
-# shared utilities (png, db, logdev, matrix, wav) in components/utils/.
+# shared utilities (png, db, devfs, logdev, matrix, wav) in components/utils/.
 # ESP-IDF only auto-discovers the immediate children of components/, so the
 # nested ones need to be listed explicitly.
 list(APPEND EXTRA_COMPONENT_DIRS
@@ -20,6 +20,7 @@ list(APPEND EXTRA_COMPONENT_DIRS
   "${CMAKE_CURRENT_LIST_DIR}/components/hal/net"
   "${CMAKE_CURRENT_LIST_DIR}/components/utils/png"
   "${CMAKE_CURRENT_LIST_DIR}/components/utils/db"
+  "${CMAKE_CURRENT_LIST_DIR}/components/utils/devfs"
   "${CMAKE_CURRENT_LIST_DIR}/components/utils/logdev"
   "${CMAKE_CURRENT_LIST_DIR}/components/utils/matrix"
   "${CMAKE_CURRENT_LIST_DIR}/components/utils/wav")

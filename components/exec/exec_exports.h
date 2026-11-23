@@ -1,6 +1,7 @@
 #ifndef MACJR_EXEC_EXPORTS_H
 #define MACJR_EXEC_EXPORTS_H
 
+#include <stdarg.h>
 #include <stddef.h>
 #include <sys/select.h>
 #include <sys/types.h>
@@ -22,11 +23,18 @@ extern const struct esp_elfsym g_exec_exports[];
 int exec_open(const char *path, int flags, int mode);
 int exec_close(int fd);
 ssize_t exec_read(int fd, void *buf, size_t len);
+ssize_t exec_write(int fd, const void *buf, size_t len);
 int exec_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
 void exec_vTaskDelay(TickType_t ticks);
 int exec_usleep(useconds_t us);
 unsigned exec_sleep(unsigned s);
 void exec_exit(int status) __attribute__((noreturn));
+
+/* stdio for a program: to its descriptor 1, the tty (ttydev.h) */
+int exec_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+int exec_vprintf(const char *fmt, va_list ap);
+int exec_puts(const char *s);
+int exec_putchar(int c);
 
 /* sdcard_open_raw() for a program: closes the db first, and the card comes
  * back (filesystem, db) when the program ends, however it ends. */

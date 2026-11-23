@@ -12,6 +12,12 @@
  * the caller's task, exec_spawn() in its own task on CPU1; either way
  * sys_exit() gets back out of it with longjmp().
  *
+ * Standard streams: descriptors 0, 1 and 2 of a program are its tty, one
+ * descriptor of /dev/tty (ttydev.c) opened for it, so write(1, ...) and
+ * read(0, ...) reach the screen and the keys, and printf(), vprintf(),
+ * puts() and putchar() print there (the firmware's own stdout stays the
+ * serial console). close() of 0..2 does nothing.
+ *
  * Killing (F and Cx together, while exec_spawn() waits): the program is
  * asked to end first. Its blocking calls -- read(), select(), the delays,
  * sys_getkey() -- wait in slices of KILL_POLL_MS and check for the
@@ -24,8 +30,11 @@
  */
 #include "exec.h"
 #include "exec_exports.h"
+#include "exec_priv.h"
+#include "ttydev.h"
 
 #include <errno.h>
+#include <stdarg.h>
 #include <fcntl.h>
 #include <setjmp.h>
 #include <stdio.h>
@@ -69,6 +78,8 @@ static volatile bool s_kill; /* end at the next blocking call */
 static int s_fds[MAX_FDS];   /* the program's open descriptors, -1 = free */
 static esp_elf_t *s_elf;     /* the program loaded, NULL for a built-in */
 static bool s_card_taken;    /* it took the SD card away from the filesystem */
+static int s_std = -1;       /* its descriptor of /dev/tty: what 0..2 stand for */
+static TaskHandle_t s_task;  /* the task it runs in */
 
 /* ---- descriptors and kill checks ------------------------------------ */
 
@@ -109,11 +120,13 @@ static void kill_check(void) {
 
 /* Block until `fd` has data, checking for a kill meanwhile. Only for a
  * blocking character device (/dev/kbrd, /dev/db/...): files don't block,
- * and select() of a driver without select support just times out. */
+ * and select() of a driver without select support just times out.
+ * /dev/tty waits for its keys itself, checking for a kill. */
 static void wait_readable(int fd) {
   struct stat st;
   int flags = fcntl(fd, F_GETFL);
-  if (flags < 0 || (flags & O_NONBLOCK) || fstat(fd, &st) != 0 || !S_ISCHR(st.st_mode)) {
+  if (flags < 0 || (flags & O_NONBLOCK) || fstat(fd, &st) != 0 || !S_ISCHR(st.st_mode) ||
+      st.st_rdev == TTY_RDEV) {
     return;
   }
   for (;;) {
@@ -150,14 +163,77 @@ int exec_open(const char *path, int flags, int mode) {
   return fd;
 }
 
+/* A standard stream (0..2) of the program: its /dev/tty descriptor. */
+static bool is_std(int fd) {
+  return fd >= STDIN_FILENO && fd <= STDERR_FILENO && s_std >= 0;
+}
+
 int exec_close(int fd) {
+  if (is_std(fd)) {
+    return 0; /* the tty stays the program's */
+  }
   fd_track(fd, false);
   return close(fd);
 }
 
 ssize_t exec_read(int fd, void *buf, size_t len) {
+  if (is_std(fd)) {
+    fd = s_std;
+  }
   wait_readable(fd);
   return read(fd, buf, len);
+}
+
+ssize_t exec_write(int fd, const void *buf, size_t len) {
+  return write(is_std(fd) ? s_std : fd, buf, len);
+}
+
+/* ---- stdio on the program's tty -------------------------------------- */
+
+static int out(const char *s, size_t len) {
+  return len == 0 || exec_write(STDOUT_FILENO, s, len) == (ssize_t)len ? 0 : -1;
+}
+
+int exec_vprintf(const char *fmt, va_list ap) {
+  char small[128];
+  char *buf = small;
+  va_list again;
+  va_copy(again, ap);
+  int n = vsnprintf(small, sizeof(small), fmt, ap);
+  if (n >= (int)sizeof(small)) {
+    buf = malloc((size_t)n + 1);
+    if (buf) {
+      vsnprintf(buf, (size_t)n + 1, fmt, again);
+    }
+  }
+  va_end(again);
+  if (n < 0 || !buf) {
+    return -1;
+  }
+  if (out(buf, (size_t)n) != 0) {
+    n = -1;
+  }
+  if (buf != small) {
+    free(buf);
+  }
+  return n;
+}
+
+int exec_printf(const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  int n = exec_vprintf(fmt, ap);
+  va_end(ap);
+  return n;
+}
+
+int exec_puts(const char *s) {
+  return out(s, strlen(s)) == 0 && out("\n", 1) == 0 ? 1 : EOF;
+}
+
+int exec_putchar(int c) {
+  char ch = (char)c;
+  return out(&ch, 1) == 0 ? (unsigned char)c : EOF;
 }
 
 int exec_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout) {
@@ -256,6 +332,32 @@ int sys_getkey(void) {
   }
 }
 
+int exec_tty_key(bool block) {
+  if (xTaskGetCurrentTaskHandle() != s_task) {
+    return -EPERM;
+  }
+  if (block) {
+    return sys_getkey();
+  }
+  for (;;) { /* what is waiting, dropping what sys_getkey() would */
+    kill_check();
+    fd_set set;
+    FD_ZERO(&set);
+    if (s_kbd < 0) {
+      return -EAGAIN;
+    }
+    FD_SET(s_kbd, &set);
+    struct timeval now = {0};
+    uint8_t code;
+    if (select(s_kbd + 1, &set, NULL, NULL, &now) <= 0 || read(s_kbd, &code, 1) != 1) {
+      return -EAGAIN;
+    }
+    if (!monitor_is_open() && !KBD_IS_CHORD(code)) {
+      return code;
+    }
+  }
+}
+
 unsigned sys_millis(void) {
   return (unsigned)(esp_timer_get_time() / 1000);
 }
@@ -309,6 +411,12 @@ static esp_err_t read_file(const char *path, uint8_t **out, size_t *out_size) {
  * only once the host can't reach it. */
 static void program_cleanup(void) {
   fds_close_all();
+  if (s_std >= 0) {
+    close(s_std);
+    s_std = -1;
+  }
+  ttydev_attach(NULL);
+  s_task = NULL;
   if (s_kbd >= 0) {
     close(s_kbd);
     s_kbd = -1;
@@ -324,6 +432,11 @@ static void program_cleanup(void) {
 static int run_main(macjr_tty_t *tty, macjr_main_t entry, int argc, char **argv) {
   fds_reset();
   s_kbd = open(KBD_DEV_PATH, O_RDONLY); /* fresh queue: no keys from before */
+  s_task = xTaskGetCurrentTaskHandle();
+  if (ttydev_init() == ESP_OK) {
+    ttydev_attach(tty);
+    s_std = open(TTY_DEV, O_RDWR); /* stdin, stdout, stderr */
+  }
   if (setjmp(s_exit_jmp) == 0) {
     s_exit_status = entry(argc, argv, tty);
   }

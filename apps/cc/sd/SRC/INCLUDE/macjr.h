@@ -6,7 +6,9 @@
  *   int main(int argc, char *argv[], macjr_tty_t *tty);
  *
  * The screen is a 40x15 text console with ANSI escapes and CP866 glyphs.
- * Write to it with macjr_tty_write() and show it with macjr_display_flush().
+ * Write to it with macjr_tty_write() and show it with macjr_display_flush(),
+ * or with printf() (stdio.h), which goes to the same screen and shows at
+ * once. The screen is also the file /dev/tty and descriptors 0..2.
  * F and Cx together kill a program.
  */
 #ifndef MACJR_H

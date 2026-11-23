@@ -3,10 +3,10 @@
 
 #include "db.h"
 
-/* Register DB_WATCH_DEV (db_watch.c). Called by db_init(). */
-esp_err_t db_watch_init(void);
+/* Register DB_LISTEN_DEV (db_listen.c). Called by db_init(). */
+esp_err_t db_listen_init(void);
 
-/* Tell the watches whose prefix matches that `key` changed. */
-void db_watch_notify(const char *key);
+/* Tell the listeners whose prefix matches that `key` changed. */
+void db_listen_notify(const char *key);
 
 #endif

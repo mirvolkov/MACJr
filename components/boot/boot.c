@@ -26,6 +26,12 @@
  * anything else dark grey. Hidden files are left out: FAT hidden or system
  * attribute, or a name starting with '.' (macOS metadata).
  *
+ * The card's root also lists DEV, in blue after the built-ins: the
+ * board's devices (/dev, devfs.h), not on the card. Inside, the header
+ * shows "/DEV" and the devices are listed in blue, by name only; they are
+ * only listed: В↑ doesn't open one, and the file menu has nothing to
+ * delete, copy or paste there. Cx goes back to the card.
+ *
  * Keys, as in the WIFI program: П→x / x→П move, ←ШГ / ШГ→ go to the first /
  * last entry, В↑ opens a directory or a file (main.c runs a program, and
  * hands a .py file to UPYTHON.ELF, a .c file to CC.ELF, a sound to
@@ -70,6 +76,7 @@
 #include <unistd.h>
 
 #include "db.h"
+#include "devfs.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -109,6 +116,9 @@ static const char *TAG = "boot";
 #define DB_KEY_DIR  "nav.dir"  /* the directory, saved when it changes */
 #define DB_KEY_FILE "nav.file" /* the entry last started from it */
 
+/* /dev as the navigator shows it: upper case, like the card's directories */
+#define DEV_NAME "DEV"
+
 #define MAX_ENTRIES 512
 #define PATH_LEN    256
 #define POLL_MS     500           /* header refresh: twice a second for the blinking colon */
@@ -130,6 +140,7 @@ static const char *TAG = "boot";
 typedef enum {
   KIND_UP, /* ".." */
   KIND_BUILTIN,
+  KIND_DEVDIR, /* "dev" in the card's root: /dev */
   KIND_DIR,
   KIND_ELF,
   KIND_SCRIPT, /* .py, run by UPYTHON.ELF */
@@ -137,11 +148,13 @@ typedef enum {
   KIND_IMAGE,
   KIND_SOUND,
   KIND_TEXT,  /* opened by TEXTVIEWER.ELF */
+  KIND_DEVICE, /* in /dev: listed, not opened */
   KIND_OTHER,
 } kind_t;
 
 static const char *const s_kind_fg[] = {
-    [KIND_UP] = "\x1b[97m",    [KIND_BUILTIN] = "\x1b[96m", [KIND_DIR] = "\x1b[97m",
+    [KIND_UP] = "\x1b[97m",    [KIND_BUILTIN] = "\x1b[96m", [KIND_DEVDIR] = "\x1b[94m", [KIND_DIR] = "\x1b[97m",
+    [KIND_DEVICE] = "\x1b[94m",
     [KIND_ELF] = "\x1b[96m",   [KIND_SCRIPT] = "\x1b[92m", [KIND_SOURCE] = "\x1b[32m", [KIND_IMAGE] = "\x1b[93m",   [KIND_SOUND] = "\x1b[95m", [KIND_TEXT] = "\x1b[37m",
     [KIND_OTHER] = "\x1b[90m",
 };
@@ -186,8 +199,15 @@ static bool at_root(void) {
   return strcmp(s_cwd, SDCARD_MOUNT_POINT) == 0;
 }
 
-/* The directory as the user sees it: "/" for the card's root. */
+static bool in_dev(void) {
+  return strcmp(s_cwd, DEVFS_DIR) == 0;
+}
+
+/* The directory as the user sees it: "/" for the card's root, "/DEV". */
 static const char *shown_path(void) {
+  if (in_dev()) {
+    return "/" DEV_NAME;
+  }
   const char *p = s_cwd + strlen(SDCARD_MOUNT_POINT);
   return *p ? p : "/";
 }
@@ -269,6 +289,7 @@ static void scan(const char *select) {
     for (int i = 0; i < s_n_builtins; i++) {
       add(s_builtins[i].name, KIND_BUILTIN, 0, i);
     }
+    add(DEV_NAME, KIND_DEVDIR, 0, -1);
   } else {
     add("..", KIND_UP, 0, -1);
   }
@@ -279,6 +300,11 @@ static void scan(const char *select) {
     while ((de = readdir(dir)) != NULL) {
       if (de->d_name[0] == '.') {
         continue; /* "._NAME" is macOS metadata; also . and .. */
+      }
+      if (in_dev()) {
+        /* by name only: most drivers have no stat() for their path */
+        add(de->d_name, KIND_DEVICE, 0, -1);
+        continue;
       }
       char path[PATH_LEN + 260];
       snprintf(path, sizeof(path), "%s/%s", s_cwd, de->d_name);
@@ -335,6 +361,14 @@ static void restore_dir(char *file, size_t len) {
   }
 }
 
+/* Into /dev, from the card's root (not saved: a reboot starts on the card). */
+static void enter_dev(void) {
+  snprintf(s_cwd, sizeof(s_cwd), "%s", DEVFS_DIR);
+  s_list.sel = 0;
+  s_list.top = 0;
+  scan(NULL);
+}
+
 /* Into directory `name`, selecting its first entry. */
 static void enter_dir(const char *name) {
   size_t len = strlen(s_cwd);
@@ -352,6 +386,11 @@ static void enter_dir(const char *name) {
 /* Up one directory, selecting the one we came from. */
 static void leave_dir(void) {
   if (at_root()) {
+    return;
+  }
+  if (in_dev()) {
+    snprintf(s_cwd, sizeof(s_cwd), "%s", SDCARD_MOUNT_POINT);
+    scan(DEV_NAME);
     return;
   }
   char *slash = strrchr(s_cwd, '/');
@@ -401,14 +440,17 @@ static void item_text(int index, char *text, size_t len, void *ctx) {
   const entry_t *e = &s_ents[index];
   char name[NAME_W + 1], ext[EXT_W + 1] = "", size[SIZE_W + 8] = "";
 
-  const char *dot_ext = e->kind == KIND_UP || e->kind == KIND_BUILTIN ? "" : ext_of(e->name);
+  const char *dot_ext =
+      e->kind == KIND_UP || e->kind == KIND_BUILTIN || e->kind == KIND_DEVDIR || e->kind == KIND_DEVICE
+          ? ""
+          : ext_of(e->name);
   size_t base_len = *dot_ext ? (size_t)(dot_ext - 1 - e->name) : strlen(e->name);
   fit(name, e->name, base_len, NAME_W);
   snprintf(ext, sizeof(ext), "%s", dot_ext); /* cut to 3 */
 
   if (e->kind == KIND_BUILTIN) {
     snprintf(size, sizeof(size), "BUILTIN");
-  } else if (e->kind != KIND_UP && e->kind != KIND_DIR) {
+  } else if (e->kind != KIND_UP && e->kind != KIND_DIR && e->kind != KIND_DEVDIR && e->kind != KIND_DEVICE) {
     format_size(e->size, size, sizeof(size));
   }
   snprintf(text, len, "%s%-*s %-*s %*s", s_kind_fg[e->kind], NAME_W, name, EXT_W, ext, SIZE_W, size);
@@ -573,12 +615,14 @@ static bool open_selected(char *path, size_t path_len, const boot_builtin_t **bu
     leave_dir();
   } else if (e->kind == KIND_DIR) {
     enter_dir(e->name);
+  } else if (e->kind == KIND_DEVDIR) {
+    enter_dev();
   } else if (e->kind == KIND_BUILTIN) {
     *builtin = &s_builtins[e->builtin];
     save(DB_KEY_FILE, e->name);
     ESP_LOGI(TAG, "%s (built in) selected", e->name);
     return true;
-  } else if (e->kind != KIND_OTHER) {
+  } else if (e->kind != KIND_OTHER && e->kind != KIND_DEVICE) {
     *builtin = NULL;
     snprintf(path, path_len, "%s/%s", s_cwd, e->name);
     save(DB_KEY_FILE, e->name);
@@ -997,7 +1041,8 @@ static void menu_add(menu_t *m, op_t op, const char *fmt, const char *arg) {
  * program or a file to open (as В↑ would). */
 static bool file_menu(macjr_tty_t *tty, int fd, char *path, size_t path_len, const boot_builtin_t **builtin) {
   const entry_t *e = s_list.sel >= 0 && s_list.sel < s_count ? &s_ents[s_list.sel] : NULL;
-  bool file_op = e && e->kind != KIND_UP && e->kind != KIND_BUILTIN;
+  bool file_op = e && e->kind >= KIND_DIR && e->kind != KIND_DEVICE; /* not "..", built-ins, /dev */
+  bool can_paste = s_clip[0] && !in_dev() && !(e && e->kind == KIND_DEVDIR);
 
   /* where a paste goes: into the selected directory, else here */
   char dest[PATH_LEN + 260];
@@ -1010,14 +1055,15 @@ static bool file_menu(macjr_tty_t *tty, int fd, char *path, size_t path_len, con
 
   menu_t m = {0};
   snprintf(m.title, sizeof(m.title), "%s", e ? e->name : shown_path());
-  if (e && e->kind != KIND_OTHER) {
-    menu_add(&m, OP_EXEC, "%s", e->kind == KIND_DIR || e->kind == KIND_UP ? "3  Open" : "3  View / run");
+  if (e && e->kind != KIND_OTHER && e->kind != KIND_DEVICE) {
+    bool dir = e->kind == KIND_DIR || e->kind == KIND_UP || e->kind == KIND_DEVDIR;
+    menu_add(&m, OP_EXEC, "%s", dir ? "3  Open" : "3  View / run");
   }
   if (file_op) {
     menu_add(&m, OP_DEL, "%s", "8  Delete");
     menu_add(&m, OP_COPY, "%s", "4  Copy");
   }
-  if (s_clip[0]) {
+  if (can_paste) {
     if (e && (e->kind == KIND_DIR || e->kind == KIND_UP)) {
       menu_add(&m, OP_PASTE, "5  Paste into %s", e->name);
     } else {
@@ -1107,7 +1153,7 @@ void boot_select(macjr_tty_t *tty, const boot_builtin_t *builtins, int n_builtin
       continue;
     }
     if (!s_scan_ok) {
-      if (!at_root() && !card_mounted()) {
+      if (in_dev() || (!at_root() && !card_mounted())) {
         snprintf(s_cwd, sizeof(s_cwd), "%s", SDCARD_MOUNT_POINT);
       }
       scan(NULL);

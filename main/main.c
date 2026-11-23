@@ -37,6 +37,7 @@
 #include "logdev.h"
 #include "monitor.h"
 #include "exec.h"
+#include "ttydev.h"
 #include "ir_rx.h"
 #include "ir_tx.h"
 #include "net.h"
@@ -207,6 +208,9 @@ void app_main(void) {
   }
   if (log_init() != ESP_OK) { /* after the db: the saved records come back */
     ESP_LOGW(TAG, "log_init failed, continuing without /dev/log");
+  }
+  if (ttydev_init() != ESP_OK) { /* at boot, so /dev lists it before any program runs */
+    ESP_LOGW(TAG, "ttydev_init failed: programs print to the serial console");
   }
 
   set_time_zone();

@@ -93,7 +93,7 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(db_create),
   ESP_ELFSYM_EXPORT(db_read),
   ESP_ELFSYM_EXPORT(db_update),
-  ESP_ELFSYM_EXPORT(db_watch),
+  ESP_ELFSYM_EXPORT(db_listen),
 
   /* the system log (/dev/log: open, read, write, select through the
    * calls below; log_open() and log_read() are inline) */
@@ -145,7 +145,7 @@ const struct esp_elfsym g_exec_exports[] = {
   EXEC_EXPORT_AS(open, exec_open),
   EXEC_EXPORT_AS(close, exec_close),
   EXEC_EXPORT_AS(read, exec_read),
-  ESP_ELFSYM_EXPORT(write),
+  EXEC_EXPORT_AS(write, exec_write),
   ESP_ELFSYM_EXPORT(mkdir),
   ESP_ELFSYM_EXPORT(fcntl),
   ESP_ELFSYM_EXPORT(stat),
@@ -187,6 +187,12 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(ldexpl),
   ESP_ELFSYM_EXPORT(time),
   ESP_ELFSYM_EXPORT(localtime),
+
+  /* stdio on the program's tty (/dev/tty), not the serial console */
+  EXEC_EXPORT_AS(printf, exec_printf),
+  EXEC_EXPORT_AS(vprintf, exec_vprintf),
+  EXEC_EXPORT_AS(puts, exec_puts),
+  EXEC_EXPORT_AS(putchar, exec_putchar),
 
   /* C library missing from the loader's table */
   ESP_ELFSYM_EXPORT(snprintf),

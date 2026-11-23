@@ -5,5 +5,5 @@
 idf_component_register(
   SRCS "logdev.c" "log_file.c"
   INCLUDE_DIRS "."
-  REQUIRES sdcard freertos vfs heap
+  REQUIRES sdcard freertos vfs heap devfs
 )

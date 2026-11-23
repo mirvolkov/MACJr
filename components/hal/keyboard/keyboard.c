@@ -32,6 +32,7 @@
 #include <sys/select.h>
 #include <sys/stat.h>
 
+#include "devfs.h"
 #include "driver/i2c_master.h"
 #include "i2c_bus.h"
 #include "esp_log.h"
@@ -561,6 +562,7 @@ esp_err_t keyboard_init(void)
         ret = ESP_ERR_NO_MEM;
         goto fail_lock;
     }
+    devfs_add("kbrd", false);
 
     ESP_LOGI(TAG, "Keyboard ready on %s: %d keys, codes %d..%d, scan %lu ms",
              KBD_DEV_PATH, KBD_KEY_COUNT, KBD_KEYCODE_BASE, KBD_KEYCODE_BASE + KBD_KEY_COUNT - 1,
