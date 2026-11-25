@@ -4,6 +4,9 @@
  *   UPYTHON              REPL (the default)
  *   UPYTHON <file.py>    run the script, then exit
  *
+ * The bytecode VM runs its simple opcodes in Xtensa assembly (vm_xtensa.S);
+ * vmasm(False) switches back to the C VM alone, for comparison.
+ *
  * The navigator starts it with the script's path when В↑ is pressed on a
  * .py file (main/main.c). A script exits with code 0, or 1 when it ended
  * with an exception (the traceback is printed first).
@@ -199,6 +202,22 @@ static void run_repl(void) {
     }
 }
 
+/* ---------- vmasm() ---------- */
+
+/* vmasm() -> whether the VM's assembly fast path (vm_xtensa.S) is on;
+ * vmasm(x) turns it on or off and returns the previous state. A global
+ * of __main__, for benchmarks (bench.py). */
+extern int macjr_vm_asm; /* vm.c */
+
+static mp_obj_t vmasm_fn(size_t n_args, const mp_obj_t *args) {
+    bool prev = macjr_vm_asm != 0;
+    if (n_args > 0) {
+        macjr_vm_asm = mp_obj_is_true(args[0]);
+    }
+    return mp_obj_new_bool(prev);
+}
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(vmasm_obj, 0, 1, vmasm_fn);
+
 /* ---------- entry point ---------- */
 
 int main(int argc, char *argv[], macjr_tty_t *tty) {
@@ -220,6 +239,7 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
     int stack_top;
     mp_embed_init(heap, heap_size, &stack_top);
     mp_stack_set_limit(STACK_LIMIT); /* deep recursion: RuntimeError, not a crash */
+    mp_store_global(qstr_from_str("vmasm"), MP_OBJ_FROM_PTR(&vmasm_obj));
 
     int status = 0;
     if (argc > 1) {

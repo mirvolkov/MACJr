@@ -131,9 +131,19 @@ EMBED_CFLAGS := -std=c99 -O2 \
 UPHY_SRCS  := upython/main.c upython/mphalport.c
 UPHY_OBJS  := $(patsubst %.c,$(OUT)/obj/%.o,$(UPHY_SRCS))
 # port/mphalport.c is the package's printf stub; upython/mphalport.c
-# replaces it with the tty.
-EMBED_SRCS := $(filter-out $(EMBED_DIR)/port/mphalport.c,$(wildcard $(EMBED_DIR)/*/*.c $(EMBED_DIR)/*/*/*.c))
-EMBED_OBJS := $(patsubst %.c,$(OUT)/obj/%.o,$(EMBED_SRCS))
+# replaces it with the tty. py/vm.c is replaced by upython/vm.c, the same
+# file with a call into the assembly fast path (upython/vm_xtensa.S).
+EMBED_SRCS := $(filter-out $(EMBED_DIR)/port/mphalport.c $(EMBED_DIR)/py/vm.c,$(wildcard $(EMBED_DIR)/*/*.c $(EMBED_DIR)/*/*/*.c))
+EMBED_OBJS := $(patsubst %.c,$(OUT)/obj/%.o,$(EMBED_SRCS)) $(OUT)/obj/upython/vm.o $(OUT)/obj/upython/vm_xtensa.o
+
+# The VM with the assembly fast path: package flags, like the py/vm.c it replaces
+$(OUT)/obj/upython/vm.o: upython/vm.c $(EMBED_SENTINEL)
+	@mkdir -p $(dir $@)
+	$(CC) $(EMBED_CFLAGS) -c $< -o $@
+
+$(OUT)/obj/upython/vm_xtensa.o: upython/vm_xtensa.S
+	@mkdir -p $(dir $@)
+	$(CC) -c $< -o $@
 
 # upython glue: compiled with firmware flags + embed includes
 $(OUT)/obj/upython/main.o: upython/main.c $(EMBED_SENTINEL) ../sdk/include/macjr.h
@@ -179,7 +189,7 @@ install: all
 install-demo:
 	@test -n "$(CARD)" || { echo "usage: make install-demo CARD=/Volumes/<card>"; exit 1; }
 	mkdir -p "$(CARD)/PY"
-	cp upython/demo.py "$(CARD)/PY/"
+	cp upython/demo.py upython/bench.py "$(CARD)/PY/"
 	-command -v dot_clean >/dev/null && dot_clean -m "$(CARD)/PY"
 
 clean:
