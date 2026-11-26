@@ -154,6 +154,31 @@ same columns as `║` (1-2 and 5-6), they join their neighbours exactly:
 .##..##..........##..##.
 ```
 
+## Lower case that looked bold
+
+When the programs moved to `/bin` with lower-case names, a screenshot of
+the navigator showed what nobody had read before: a whole panel of
+lowercase Latin text, and it looked heavy and smudged next to the
+capitals. The rendering told why. The lowercase letters were 6 rows tall
+(rows 6-11) against the capitals' 10, and `i`, `j` and `l` had 3-pixel
+stems where everything else uses 2. The squashed `m` turned into a block:
+
+```
+before    after
+........  .###.##.   row 5
+.######.  .##.#.##
+.######.  .##.#.##
+.######.  .##.#.##
+.##..##.  .##.#.##
+.##..##.  .##.#.##
+.##..##.  .##.#.##   row 11, the baseline
+```
+
+All 26 were redrawn on the capitals' grid. They keep the same weight: stems
+of 2 pixels, bars of 1. The x-height is now 7 rows (5-11), ascenders reach
+the capitals' top (row 2), and descenders go down to row 14. Capitals,
+digits, Cyrillic and the box drawing were left as they were.
+
 ## From a menu to a navigator
 
 The boot menu ran out of digit keys, and the card had more on it than
@@ -204,6 +229,7 @@ same now. A cursor move or a control code cancels the pending wrap, and a
 colour change keeps it, so coloured text still runs on to the next row.
 
 **Result:** a double-buffered driver, a console with colours that wraps
-like a terminal, a CP866 font with arrows and correct boxes, a list window,
+like a terminal, a CP866 font with arrows, correct boxes and a readable
+lower case, a list window,
 a monitor that works on top of any screen, and a navigator to start
 programs from.
