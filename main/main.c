@@ -5,14 +5,21 @@
  * background, with the clock then set over NTP -- the radio and its buffers
  * stay off until asked for. It starts the system monitor (keys F+K), then loops over the
  * file navigator (components/boot) and the program picked there: an ELF
- * file on the SD card, loaded and run by components/exec, a .py script, run
- * by /BIN/UPYTHON.ELF, or a .c source, compiled by /BIN/CC.ELF (apps/: MK-52
+ * file from /bin (flash) or the SD card, loaded and run by components/exec, a .py script, run
+ * by /bin/UPYTHON.ELF, or a .c source, compiled by /bin/CC.ELF (apps/: MK-52
  * calculator, USB drive, image viewer, IR receiver and sender, Si5351
  * generator, Wi-Fi, mixer, C compiler, games). A program can also be built into
  * the firmware while it is developed: pass it to boot_select() as a
  * boot_builtin_t. The navigator comes back as soon as a program ends; F and
  * Cx together kill a program, which is how to leave those that never
  * return (radio, USB drive, MK-52).
+ *
+ * Firmware updates (main/ota.c): a build/MACJr.bin copied to the card as
+ * UPDATE/MACJR.BIN is installed at boot into the other app slot; the new
+ * firmware runs on trial until it is up, and В/О held at power-up boots
+ * the previous one. While Wi-Fi is on, main/netupd.c takes a firmware and
+ * the programs over the network (apps/tools/deploy.py); the programs live
+ * on flash, in the apps partition mounted as /bin (components/exec/appfs.c).
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -41,6 +48,8 @@
 #include "ir_rx.h"
 #include "ir_tx.h"
 #include "net.h"
+#include "ota.h"
+#include "netupd.h"
 
 static const char *TAG = "MACJR";
 
@@ -109,7 +118,17 @@ static void wifi_task(void *arg) {
           ESP_LOGW(TAG, "Wi-Fi %s: %s", ssid, esp_err_to_name(err));
         }
       }
+      char ip[16];
+      if (net_wifi_status(NULL, ip) && netupd_start() == ESP_OK) {
+        ota_confirm(); /* a firmware updated over Wi-Fi: it can be updated again */
+        static char said[16];
+        if (strcmp(said, ip) != 0) { /* once per address */
+          snprintf(said, sizeof(said), "%s", ip);
+          ESP_LOGI(TAG, "updates: http://%s:%d/info", ip, NETUPD_PORT);
+        }
+      }
     } else {
+      netupd_stop();
       net_wifi_down(); /* a no-op when already down */
     }
     vTaskDelay(pdMS_TO_TICKS(WIFI_POLL_MS));
@@ -129,7 +148,7 @@ static bool wifi_toggle(void) {
 }
 
 /* A .py file from the navigator runs as UPYTHON.ELF <file>. */
-#define PYTHON_PATH EXEC_BIN_DIR "/UPYTHON.ELF"
+#define PYTHON_PATH EXEC_BIN_DIR "/upython.elf"
 
 static bool is_script(const char *path) {
   const char *dot = strrchr(path, '.');
@@ -137,7 +156,7 @@ static bool is_script(const char *path) {
 }
 
 /* A .c file from the navigator compiles as CC.ELF <file>. */
-#define CC_PATH EXEC_BIN_DIR "/CC.ELF"
+#define CC_PATH EXEC_BIN_DIR "/cc.elf"
 
 static bool is_source(const char *path) {
   const char *dot = strrchr(path, '.');
@@ -145,7 +164,7 @@ static bool is_source(const char *path) {
 }
 
 /* A sound file from the navigator plays as AUDIOPLAYER.ELF <file>. */
-#define PLAYER_PATH EXEC_BIN_DIR "/AUDIOPLAYER.ELF"
+#define PLAYER_PATH EXEC_BIN_DIR "/audioplayer.elf"
 
 static bool is_audio(const char *path) {
   const char *dot = strrchr(path, '.');
@@ -157,7 +176,7 @@ static bool is_audio(const char *path) {
 }
 
 /* An image file from the navigator opens in IMAGEVIEWER.ELF <file>. */
-#define IMAGEVIEWER_PATH EXEC_BIN_DIR "/IMAGEVIEWER.ELF"
+#define IMAGEVIEWER_PATH EXEC_BIN_DIR "/imageviewer.elf"
 
 static bool is_image(const char *path) {
   const char *dot = strrchr(path, '.');
@@ -171,7 +190,7 @@ static bool is_image(const char *path) {
 
 /* A text file from the navigator opens in TEXTVIEWER.ELF <file>, which is
  * built from apps/textviewer. */
-#define TEXTVIEWER_PATH EXEC_BIN_DIR "/TEXTVIEWER.ELF"
+#define TEXTVIEWER_PATH EXEC_BIN_DIR "/textviewer.elf"
 
 static bool is_text(const char *path) {
   static const char *const exts[] = {".txt", ".md", ".log", ".ini", ".cfg", ".csv", ".json", ".h"};
@@ -202,6 +221,9 @@ void app_main(void) {
   } else if (db_init() != ESP_OK) {
     ESP_LOGW(TAG, "db_init failed, continuing without config");
   }
+  if (exec_apps_init() != ESP_OK) { /* the programs' flash partition, /bin */
+    ESP_LOGW(TAG, "exec_apps_init failed: no programs (/bin)");
+  }
   if (log_init() != ESP_OK) { /* after the db: the saved records come back */
     ESP_LOGW(TAG, "log_init failed, continuing without /dev/log");
   }
@@ -221,6 +243,7 @@ void app_main(void) {
   } else {
     xTaskCreate(kbrd_task, "kbrd", 3072, NULL, 4, NULL);
   }
+  ota_boot(); /* В/О held: back to the previous firmware */
 
   if (ir_rx_init() != ESP_OK) {
     ESP_LOGW(TAG, "ir_rx_init failed, continuing without IR receiver");
@@ -245,8 +268,14 @@ void app_main(void) {
   ESP_LOGI(TAG, "tty up: %ux%u chars on %ux%u px", ws->ws_col, ws->ws_row, ws->ws_xpixel, ws->ws_ypixel);
 
   macjr_tty_set_front(tty);
+  ota_from_card(tty); /* UPDATE/MACJR.BIN: install it and restart */
   start_monitor(tty, display);
   monitor_set_wifi_cb(wifi_toggle); /* F+БП toggles Wi-Fi, with a notice */
+  if (netupd_rejoin()) {
+    wifi_toggle(); /* restarted by a network update: back on Wi-Fi, confirm there */
+  } else {
+    ota_confirm(); /* up and able to update itself again: keep this firmware */
+  }
 
   for (;;) {
     char path[64];

@@ -76,3 +76,15 @@ CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=6
 # VFS entries: IDF takes 4 (/dev/null, uart, secondary, console), the
 # firmware the SD card, /dev and its devices
 CONFIG_VFS_MAX_COUNT=16
+
+# Two app slots (partitions.csv) for updates from the SD card and, later,
+# over Wi-Fi (main/ota.c). A new firmware boots on trial: it confirms
+# itself once it is up; if it crashes or hangs before that, the bootloader
+# goes back to the previous one.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Crash dumps to the coredump partition, for reading after the fact.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y

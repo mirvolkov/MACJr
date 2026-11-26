@@ -22,6 +22,7 @@ we fixed it.
 | 16 | [A C compiler on the board](16-c-compiler.md) | TinyCC with a new Xtensa backend, its own ELF writer, a simulator to test it, a text viewer built on the board, and `...` functions |
 | 17 | [Copy, paste, delete](17-file-operations.md) | A file menu on F + В↑, an ordered chord, recursive copy and delete with progress and Cx to stop |
 | 18 | [/dev: the terminal as a file](18-dev.md) | `/dev/tty`, `printf()` on the screen, descriptors 0 to 2, a full VFS table, and a listable `/dev` |
+| 19 | [Updates without the card](19-updates.md) | Two firmware slots with rollback, programs on a flash partition as `/bin`, and updates over Wi-Fi or one cable command |
 
 For the compact list of every step so far, open issues and what comes
 next, see [roadmap.txt](roadmap.txt).

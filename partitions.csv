@@ -1,0 +1,17 @@
+# MacJr flash layout (16 MB): two app slots for over-the-air updates.
+# The firmware runs from one slot and writes an update into the other;
+# otadata says which one boots (main/ota.c). The programs have a
+# partition of their own (apps). nvs stays where the old
+# single-app table had it, so the Wi-Fi calibration survives.
+# Name,    Type, SubType,  Offset,    Size
+nvs,       data, nvs,      0x9000,    0x6000
+otadata,   data, ota,      0xF000,    0x2000
+phy_init,  data, phy,      0x11000,   0x1000
+ota_0,     app,  ota_0,    0x20000,   4M
+ota_1,     app,  ota_1,    0x420000,  4M
+coredump,  data, coredump, 0x820000,  64K
+# The programs (ELFs): a FAT file system with wear levelling, mounted as
+# /bin (components/exec/appfs.c), written over Wi-Fi (main/netupd.c) or
+# the USB cable (apps/tools/flashapps.py).
+apps,      data, fat,      0x830000,  6M
+# 0xE30000..0x1000000 (1.8 MB) free

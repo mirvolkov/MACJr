@@ -1,6 +1,6 @@
 /*
  * MicroPython port configuration for MACJr (ESP32-S3, Xtensa LX7).
- * Loaded as an ELF from /BIN on the SD card.  I/O goes through the MacJr
+ * Loaded as an ELF from /bin (the board's flash).  I/O goes through the MacJr
  * TTY and MK-52 keyboard; errno-dependent modules are disabled.
  */
 #pragma once

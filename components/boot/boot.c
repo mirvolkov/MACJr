@@ -26,11 +26,18 @@
  * anything else dark grey. Hidden files are left out: FAT hidden or system
  * attribute, or a name starting with '.' (macOS metadata).
  *
- * The card's root also lists DEV, in blue after the built-ins: the
+ * The card's root also lists DEV, white like any directory, after the built-ins: the
  * board's devices (/dev, devfs.h), not on the card. Inside, the header
  * shows "/DEV" and the devices are listed in blue, by name only; they are
  * only listed: В↑ doesn't open one, and the file menu has nothing to
  * delete, copy or paste there. Cx goes back to the card.
+ *
+ * After DEV comes BIN, white too: the programs, on flash (EXEC_BIN_DIR, /bin:
+ * the apps partition, written over Wi-Fi or the USB cable). Inside, the
+ * header shows "/BIN"; it works like a directory of the card (run,
+ * delete, copy, paste: a program pasted there from the card is on flash
+ * from then on). Cx goes back to the card's root. An old BIN directory in
+ * the card's root is not listed: the name is the flash's now.
  *
  * Keys, as in the WIFI program: П→x / x→П move, ←ШГ / ШГ→ go to the first /
  * last entry, В↑ opens a directory or a file (main.c runs a program, and
@@ -77,6 +84,7 @@
 
 #include "db.h"
 #include "devfs.h"
+#include "exec.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -118,6 +126,8 @@ static const char *TAG = "boot";
 
 /* /dev as the navigator shows it: upper case, like the card's directories */
 #define DEV_NAME "DEV"
+/* the programs on flash (EXEC_BIN_DIR, exec.h: /bin), shown as /BIN */
+#define BIN_NAME "BIN"
 
 #define MAX_ENTRIES 512
 #define PATH_LEN    256
@@ -141,6 +151,7 @@ typedef enum {
   KIND_UP, /* ".." */
   KIND_BUILTIN,
   KIND_DEVDIR, /* "dev" in the card's root: /dev */
+  KIND_BINDIR, /* "BIN" in the card's root: the programs on flash, /bin */
   KIND_DIR,
   KIND_ELF,
   KIND_SCRIPT, /* .py, run by UPYTHON.ELF */
@@ -153,7 +164,8 @@ typedef enum {
 } kind_t;
 
 static const char *const s_kind_fg[] = {
-    [KIND_UP] = "\x1b[97m",    [KIND_BUILTIN] = "\x1b[96m", [KIND_DEVDIR] = "\x1b[94m", [KIND_DIR] = "\x1b[97m",
+    [KIND_UP] = "\x1b[97m",    [KIND_BUILTIN] = "\x1b[96m", [KIND_DEVDIR] = "\x1b[97m", [KIND_BINDIR] = "\x1b[97m",
+    [KIND_DIR] = "\x1b[97m",
     [KIND_DEVICE] = "\x1b[94m",
     [KIND_ELF] = "\x1b[96m",   [KIND_SCRIPT] = "\x1b[92m", [KIND_SOURCE] = "\x1b[32m", [KIND_IMAGE] = "\x1b[93m",   [KIND_SOUND] = "\x1b[95m", [KIND_TEXT] = "\x1b[37m",
     [KIND_OTHER] = "\x1b[90m",
@@ -203,10 +215,25 @@ static bool in_dev(void) {
   return strcmp(s_cwd, DEVFS_DIR) == 0;
 }
 
+/* In the programs on flash (EXEC_BIN_DIR or a directory in it)? */
+static bool in_bin(void) {
+  size_t n = strlen(EXEC_BIN_DIR);
+  return strncmp(s_cwd, EXEC_BIN_DIR, n) == 0 && (s_cwd[n] == '\0' || s_cwd[n] == '/');
+}
+
+static bool at_bin_root(void) {
+  return strcmp(s_cwd, EXEC_BIN_DIR) == 0;
+}
+
 /* The directory as the user sees it: "/" for the card's root, "/DEV". */
 static const char *shown_path(void) {
   if (in_dev()) {
     return "/" DEV_NAME;
+  }
+  if (in_bin()) {
+    static char shown[PATH_LEN];
+    snprintf(shown, sizeof(shown), "/%s%s", BIN_NAME, s_cwd + strlen(EXEC_BIN_DIR));
+    return shown;
   }
   const char *p = s_cwd + strlen(SDCARD_MOUNT_POINT);
   return *p ? p : "/";
@@ -290,6 +317,7 @@ static void scan(const char *select) {
       add(s_builtins[i].name, KIND_BUILTIN, 0, i);
     }
     add(DEV_NAME, KIND_DEVDIR, 0, -1);
+    add(BIN_NAME, KIND_BINDIR, 0, -1);
   } else {
     add("..", KIND_UP, 0, -1);
   }
@@ -313,6 +341,9 @@ static void scan(const char *select) {
         continue;
       }
       bool is_dir = S_ISDIR(st.st_mode);
+      if (is_dir && at_root() && strcasecmp(de->d_name, BIN_NAME) == 0) {
+        continue; /* an old /BIN on the card: BIN is the flash now */
+      }
       add(de->d_name, is_dir ? KIND_DIR : file_kind(de->d_name), is_dir ? 0 : (uint32_t)st.st_size, -1);
     }
     closedir(dir);
@@ -351,8 +382,13 @@ static void restore_dir(char *file, size_t len) {
   char dir[PATH_LEN];
   size_t root = strlen(SDCARD_MOUNT_POINT);
   struct stat st;
-  if (db_read(DB_KEY_DIR, dir, sizeof(dir)) != ESP_OK || strncmp(dir, SDCARD_MOUNT_POINT, root) != 0 ||
-      (dir[root] != '\0' && dir[root] != '/') || stat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+  size_t apps = strlen(EXEC_BIN_DIR);
+  if (db_read(DB_KEY_DIR, dir, sizeof(dir)) != ESP_OK) {
+    return;
+  }
+  bool on_card = strncmp(dir, SDCARD_MOUNT_POINT, root) == 0 && (dir[root] == '\0' || dir[root] == '/');
+  bool on_bin = strncmp(dir, EXEC_BIN_DIR, apps) == 0 && (dir[apps] == '\0' || dir[apps] == '/');
+  if ((!on_card && !on_bin) || stat(dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
     return;
   }
   snprintf(s_cwd, sizeof(s_cwd), "%s", dir);
@@ -367,6 +403,16 @@ static void enter_dev(void) {
   s_list.sel = 0;
   s_list.top = 0;
   scan(NULL);
+}
+
+/* Into the programs on flash, from the card's root (saved like a
+ * directory of the card). */
+static void enter_bin(void) {
+  snprintf(s_cwd, sizeof(s_cwd), "%s", EXEC_BIN_DIR);
+  s_list.sel = 0;
+  s_list.top = 0;
+  scan(NULL);
+  save(DB_KEY_DIR, s_cwd);
 }
 
 /* Into directory `name`, selecting its first entry. */
@@ -391,6 +437,12 @@ static void leave_dir(void) {
   if (in_dev()) {
     snprintf(s_cwd, sizeof(s_cwd), "%s", SDCARD_MOUNT_POINT);
     scan(DEV_NAME);
+    return;
+  }
+  if (at_bin_root()) {
+    snprintf(s_cwd, sizeof(s_cwd), "%s", SDCARD_MOUNT_POINT);
+    scan(BIN_NAME);
+    save(DB_KEY_DIR, s_cwd);
     return;
   }
   char *slash = strrchr(s_cwd, '/');
@@ -441,7 +493,8 @@ static void item_text(int index, char *text, size_t len, void *ctx) {
   char name[NAME_W + 1], ext[EXT_W + 1] = "", size[SIZE_W + 8] = "";
 
   const char *dot_ext =
-      e->kind == KIND_UP || e->kind == KIND_BUILTIN || e->kind == KIND_DEVDIR || e->kind == KIND_DEVICE
+      e->kind == KIND_UP || e->kind == KIND_BUILTIN || e->kind == KIND_DEVDIR || e->kind == KIND_BINDIR ||
+              e->kind == KIND_DEVICE
           ? ""
           : ext_of(e->name);
   size_t base_len = *dot_ext ? (size_t)(dot_ext - 1 - e->name) : strlen(e->name);
@@ -450,7 +503,8 @@ static void item_text(int index, char *text, size_t len, void *ctx) {
 
   if (e->kind == KIND_BUILTIN) {
     snprintf(size, sizeof(size), "BUILTIN");
-  } else if (e->kind != KIND_UP && e->kind != KIND_DIR && e->kind != KIND_DEVDIR && e->kind != KIND_DEVICE) {
+  } else if (e->kind != KIND_UP && e->kind != KIND_DIR && e->kind != KIND_DEVDIR && e->kind != KIND_BINDIR &&
+             e->kind != KIND_DEVICE) {
     format_size(e->size, size, sizeof(size));
   }
   snprintf(text, len, "%s%-*s %-*s %*s", s_kind_fg[e->kind], NAME_W, name, EXT_W, ext, SIZE_W, size);
@@ -617,6 +671,8 @@ static bool open_selected(char *path, size_t path_len, const boot_builtin_t **bu
     enter_dir(e->name);
   } else if (e->kind == KIND_DEVDIR) {
     enter_dev();
+  } else if (e->kind == KIND_BINDIR) {
+    enter_bin();
   } else if (e->kind == KIND_BUILTIN) {
     *builtin = &s_builtins[e->builtin];
     save(DB_KEY_FILE, e->name);
@@ -1042,7 +1098,7 @@ static void menu_add(menu_t *m, op_t op, const char *fmt, const char *arg) {
 static bool file_menu(macjr_tty_t *tty, int fd, char *path, size_t path_len, const boot_builtin_t **builtin) {
   const entry_t *e = s_list.sel >= 0 && s_list.sel < s_count ? &s_ents[s_list.sel] : NULL;
   bool file_op = e && e->kind >= KIND_DIR && e->kind != KIND_DEVICE; /* not "..", built-ins, /dev */
-  bool can_paste = s_clip[0] && !in_dev() && !(e && e->kind == KIND_DEVDIR);
+  bool can_paste = s_clip[0] && !in_dev() && !(e && (e->kind == KIND_DEVDIR || e->kind == KIND_BINDIR));
 
   /* where a paste goes: into the selected directory, else here */
   char dest[PATH_LEN + 260];
@@ -1056,7 +1112,7 @@ static bool file_menu(macjr_tty_t *tty, int fd, char *path, size_t path_len, con
   menu_t m = {0};
   snprintf(m.title, sizeof(m.title), "%s", e ? e->name : shown_path());
   if (e && e->kind != KIND_OTHER && e->kind != KIND_DEVICE) {
-    bool dir = e->kind == KIND_DIR || e->kind == KIND_UP || e->kind == KIND_DEVDIR;
+    bool dir = e->kind == KIND_DIR || e->kind == KIND_UP || e->kind == KIND_DEVDIR || e->kind == KIND_BINDIR;
     menu_add(&m, OP_EXEC, "%s", dir ? "3  Open" : "3  View / run");
   }
   if (file_op) {

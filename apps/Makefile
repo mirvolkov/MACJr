@@ -2,12 +2,15 @@
 #
 # Every directory here with .c files is one program: apps/<name>/*.c is
 # built into build/<NAME>.ELF, a position-independent ELF that the firmware
-# loads from /BIN on the SD card (components/exec, espressif/elf_loader).
+# loads from /bin, the board's flash partition for programs (components/exec,
+# espressif/elf_loader).
 # Programs see the firmware's headers with its build flags, so build the
 # firmware (idf.py build) before them.
 #
 #   make                          build all programs
-#   make install CARD=/Volumes/X  copy them to X/BIN
+#   make install CARD=/Volumes/X  copy the cc headers and examples to X/SRC
+#   make deploy HOST=<address>    send firmware + programs over Wi-Fi
+#   make flash-apps PORT=<port>   write all programs over the USB cable
 #   make clean
 #
 # Needs the ESP-IDF environment (export.sh) for the Xtensa toolchain.
@@ -149,14 +152,29 @@ $(OUT)/UPYTHON.ELF: $(UPHY_OBJS) $(EMBED_OBJS) $(LIBGCC) $(EXPORTS)
 	@python3 tools/checkelf.py $(CROSS)readelf $@ $(EXPORTS) || { rm -f $@; exit 1; }
 	@echo "$@: $$(wc -c < $@) bytes"
 
+# Over Wi-Fi (the board on Wi-Fi: F + БП): the firmware if it changed
+# (../build/MACJr.bin; the board restarts into it), then the programs that
+# changed, onto the board's flash. tools/deploy.py --help for the rest.
+#   make deploy HOST=192.168.1.50 [TOKEN=...]
+deploy: all
+	@test -n "$(HOST)" || { echo "usage: make deploy HOST=<board address> [TOKEN=...]"; exit 1; }
+	python3 tools/deploy.py $(HOST) $(ELFS) $(if $(TOKEN),--token $(TOKEN))
+
+# Over the USB cable: an image of the whole apps flash partition with every
+# program, written with esptool (replaces what the partition held). Needs
+# the ESP-IDF Python (esptool); ESPPY points to it.
+#   make flash-apps PORT=/dev/cu.usbmodem1101
+ESPPY ?= $(HOME)/.espressif/tools/python/v6.0.1/venv/bin/python
+flash-apps: all
+	@test -n "$(PORT)" || { echo "usage: make flash-apps PORT=<serial port>"; exit 1; }
+	$(ESPPY) tools/flashapps.py --port $(PORT) $(ELFS)
+
 install: all
 	@test -n "$(CARD)" || { echo "usage: make install CARD=/Volumes/<card>"; exit 1; }
-	mkdir -p "$(CARD)/BIN"
-	cp $(ELFS) "$(CARD)/BIN/"
 	mkdir -p "$(CARD)/SRC/INCLUDE"
 	cp cc/sd/SRC/INCLUDE/*.h "$(CARD)/SRC/INCLUDE/"
 	cp -n cc/sd/SRC/*.c "$(CARD)/SRC/" || true # the examples, unless already there
-	-command -v dot_clean >/dev/null && dot_clean -m "$(CARD)/BIN" "$(CARD)/SRC" # macOS ._ metadata files
+	-command -v dot_clean >/dev/null && dot_clean -m "$(CARD)/SRC" # macOS ._ metadata files
 
 install-demo:
 	@test -n "$(CARD)" || { echo "usage: make install-demo CARD=/Volumes/<card>"; exit 1; }
@@ -168,7 +186,7 @@ clean:
 	rm -rf $(OUT)
 	rm -rf upython/build-embed
 
-.PHONY: all install install-demo clean
+.PHONY: all install install-demo deploy flash-apps clean
 
 # keep the objects for incremental rebuilds
 .SECONDARY:

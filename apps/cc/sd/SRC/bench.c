@@ -3,7 +3,7 @@
  *
  * Open it in the navigator and cc compiles it (its report shows how long
  * that took); run bench.elf for the times. The same source is built by GCC
- * -O2 as /BIN/CCBENCH.ELF (apps/ccbench), to compare the two compilers.
+ * -O2 as /bin/CCBENCH.ELF (apps/ccbench), to compare the two compilers.
  *
  * Each benchmark ends with a checksum of what it computed; "ok" means it
  * matches the one the program was checked against, so a wrong result

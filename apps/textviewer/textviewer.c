@@ -1,7 +1,7 @@
 /*
  * textviewer.c -- TEXTVIEWER.ELF: view a text file given as argv[1]. The
  * navigator opens text files (.txt .md .log .ini .cfg .csv .json .h) with
- * /BIN/TEXTVIEWER.ELF. Built by apps/Makefile like the other programs;
+ * /bin/TEXTVIEWER.ELF. Built by apps/Makefile like the other programs;
  * it also builds on the board with CC.ELF (one file, on-board headers only).
  *
  *   ═════════════[README.TXT]══════════════

@@ -1,6 +1,9 @@
 #ifndef MACJR_EXEC_H
 #define MACJR_EXEC_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include "esp_err.h"
 #include "sdcard.h"
 #include "macjr.h"
@@ -10,8 +13,18 @@
 extern "C" {
 #endif
 
-/* Programs live here on the SD card. */
-#define EXEC_BIN_DIR SDCARD_MOUNT_POINT "/BIN"
+/* Programs live on flash: the "apps" partition, mounted as /bin
+ * (appfs.c), written over Wi-Fi (main/netupd.c) or the USB cable
+ * (apps/tools/flashapps.py). /bin/tetris.elf is a program: names are
+ * lower case, as on Unix (FAT matches them in any case). */
+#define EXEC_BIN_DIR "/bin"
+
+/* Mount the apps partition at EXEC_BIN_DIR (formatting it the first time).
+ * Call once at boot. */
+esp_err_t exec_apps_init(void);
+
+/* Size and free space of the apps partition. */
+esp_err_t exec_apps_info(uint64_t *total, uint64_t *free_bytes);
 
 /* Load the ELF program at `path` into PSRAM and run its
  * main(argc, argv, tty) in the calling task (sdk/include/macjr.h). Returns once the program ends; its exit code goes to `*status`.
