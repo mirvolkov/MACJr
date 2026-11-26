@@ -25,7 +25,8 @@ esp_err_t exec_run(macjr_tty_t *tty, const char *path, int argc, char **argv, in
  * it. */
 #define EXEC_CORE       1
 #define EXEC_PRIORITY   0
-#define EXEC_STACK_SIZE 16384 /* internal SRAM: MicroPython runs in 16 KB, as on its ESP32 port */
+#define EXEC_STACK_SIZE 16384 /* internal SRAM: MicroPython runs in 16 KB, as on its ESP32 port;
+                               a program may declare more (MACJR_STACK), then in PSRAM */
 
 /* Exit code of a killed program: 128 + SIGKILL (9), as Unix shells show
  * it. */

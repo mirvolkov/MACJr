@@ -149,10 +149,41 @@ $(OUT)/UPYTHON.ELF: $(UPHY_OBJS) $(EMBED_OBJS) $(LIBGCC) $(EXPORTS)
 	@python3 tools/checkelf.py $(CROSS)readelf $@ $(EXPORTS) || { rm -f $@; exit 1; }
 	@echo "$@: $$(wc -c < $@) bytes"
 
+# ---- nethack: NetHack 3.6 ----
+#
+# The game's sources (vendor/nethack: src, the tty port, the MacJr
+# system layer sys/macjr) are compiled into NETHACK.ELF with their own
+# flags: C99 (NetHack is K&R C, which C23 no longer accepts), its
+# warnings off, -Os (big code runs from PSRAM through the cache). Its
+# headers onames.h, pm.h and date.h and its data (nhdat) come from host
+# tools: vendor/nethack/sys/macjr/Makefile.host.
+
+NH      := ../vendor/nethack
+NH_SRCS := $(wildcard $(NH)/src/*.c) \
+           $(addprefix $(NH)/win/tty/,getline.c termcap.c topl.c wintty.c) \
+           $(NH)/sys/share/pmatchregex.c \
+           $(NH)/sys/macjr/macjrunix.c $(NH)/sys/macjr/macjrtty.c
+NH_OBJS := $(patsubst $(NH)/%.c,$(OUT)/obj/nethack/nh/%.o,$(NH_SRCS))
+NH_GEN  := $(NH)/include/date.h
+NH_CFLAGS := $(FW_FLAGS) -I../sdk/include -I$(NH)/include \
+             -std=gnu99 -Os -w -DMACJR -DNDEBUG \
+             -finput-charset=UTF-8 -fexec-charset=CP866 \
+             -ffunction-sections -fdata-sections -fvisibility=hidden -fPIC
+
+$(NH_GEN):
+	$(MAKE) -C $(NH)/sys/macjr -f Makefile.host
+
+$(OUT)/obj/nethack/nh/%.o: $(NH)/%.c $(NH_GEN) $$(wildcard $(NH)/include/*.h)
+	@mkdir -p $(dir $@)
+	$(CC) $(NH_CFLAGS) -c $< -o $@
+
+$(OUT)/NETHACK.ELF: $(NH_OBJS)
+
 install: all
 	@test -n "$(CARD)" || { echo "usage: make install CARD=/Volumes/<card>"; exit 1; }
 	mkdir -p "$(CARD)/BIN"
 	cp $(ELFS) "$(CARD)/BIN/"
+	$(MAKE) -C $(NH)/sys/macjr -f Makefile.host install CARD="$(CARD)"
 	mkdir -p "$(CARD)/SRC/INCLUDE"
 	cp cc/sd/SRC/INCLUDE/*.h "$(CARD)/SRC/INCLUDE/"
 	cp -n cc/sd/SRC/*.c "$(CARD)/SRC/" || true # the examples, unless already there

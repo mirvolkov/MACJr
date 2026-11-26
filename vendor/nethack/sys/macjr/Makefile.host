@@ -1,0 +1,95 @@
+# NetHack for MacJr: the part built on the host (the Mac).
+#
+# makedefs, lev_comp, dgn_comp and dlb are host programs. They make the
+# headers the game is compiled with (include/onames.h, pm.h, date.h)
+# and its data files, packed into dat/nhdat for the SD card. Their
+# binary files are written for the board (-DMACJR_HOST: long is 32 bits
+# there), with the game's options (-DNOMAIL -DNOSHELL -DDLB: the version
+# stamp in each file has to match the game's).
+#
+# The game itself is built by apps/Makefile (NETHACK.ELF), which runs
+# this file first.
+#
+#   make -f Makefile.host               headers and dat/nhdat
+#   make -f Makefile.host install CARD=/Volumes/X
+#                                       the playground X/NETHACK
+#   make -f Makefile.host clean
+
+NH       := ../..
+HOSTCC   ?= cc
+HOSTCFLAGS := -O2 -w -std=gnu89 -I$(NH)/include -I$(NH)/sys/share \
+              -DMACJR_HOST -DNOMAIL -DNOSHELL -DDLB
+UTIL     := $(NH)/util
+DAT      := $(NH)/dat
+
+MAKEDEFS := $(UTIL)/makedefs
+LEVCOMP  := $(UTIL)/lev_comp
+DGNCOMP  := $(UTIL)/dgn_comp
+DLB      := $(UTIL)/dlb
+
+ALLOC    := $(NH)/src/alloc.c $(UTIL)/panic.c
+NAMING   := $(NH)/src/drawing.c $(NH)/src/decl.c $(NH)/src/monst.c $(NH)/src/objects.c
+
+HEADERS  := $(NH)/include/onames.h $(NH)/include/pm.h $(NH)/include/date.h
+
+# what goes into nhdat (Makefile.top: DATDLB), and what stays beside it
+DATHELP  := help hh cmdhelp keyhelp history opthelp wizhelp
+VARDAT   := bogusmon data engrave epitaph oracles options quest.dat rumors
+LEVDES   := bigroom castle endgame gehennom knox medusa mines oracle sokoban \
+            tower yendor Arch Barb Caveman Healer Knight Monk Priest Ranger \
+            Rogue Samurai Tourist Valkyrie Wizard
+
+all: $(HEADERS) $(DAT)/nhdat
+
+# ---- tools ----
+
+$(MAKEDEFS): $(UTIL)/makedefs.c $(NH)/src/monst.c $(NH)/src/objects.c $(NH)/include/qtext.h
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(UTIL)/makedefs.c $(NH)/src/monst.c $(NH)/src/objects.c
+
+$(LEVCOMP): $(UTIL)/lev_main.c $(NH)/sys/share/lev_yacc.c $(NH)/sys/share/lev_lex.c $(HEADERS)
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(UTIL)/lev_main.c $(NH)/sys/share/lev_yacc.c \
+	      $(NH)/sys/share/lev_lex.c $(ALLOC) $(NAMING)
+
+$(DGNCOMP): $(UTIL)/dgn_main.c $(NH)/sys/share/dgn_yacc.c $(NH)/sys/share/dgn_lex.c $(HEADERS)
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(UTIL)/dgn_main.c $(NH)/sys/share/dgn_yacc.c \
+	      $(NH)/sys/share/dgn_lex.c $(ALLOC)
+
+$(DLB): $(UTIL)/dlb_main.c $(NH)/src/dlb.c $(HEADERS)
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ $(UTIL)/dlb_main.c $(NH)/src/dlb.c $(ALLOC)
+
+# ---- headers (makedefs works in util/: ../include, ../dat) ----
+
+$(NH)/include/onames.h: $(MAKEDEFS)
+	cd $(UTIL) && ./makedefs -o
+$(NH)/include/pm.h: $(MAKEDEFS)
+	cd $(UTIL) && ./makedefs -p
+$(NH)/include/date.h: $(MAKEDEFS)
+	cd $(UTIL) && ./makedefs -v
+
+# ---- data files (made in dat/) ----
+
+$(DAT)/nhdat: $(MAKEDEFS) $(LEVCOMP) $(DGNCOMP) $(DLB) $(addprefix $(DAT)/,$(LEVDES:=.des))
+	cd $(DAT) && ../util/makedefs -d && ../util/makedefs -r && \
+	  ../util/makedefs -q && ../util/makedefs -h && ../util/makedefs -s && \
+	  ../util/makedefs -v
+	cd $(DAT) && ../util/makedefs -e && ../util/dgn_comp dungeon.pdf
+	cd $(DAT) && for d in $(LEVDES); do ../util/lev_comp $$d.des || exit 1; done
+	cd $(DAT) && LC_ALL=C ../util/dlb cf nhdat $(DATHELP) dungeon tribute \
+	  $$(ls *.lev) $(VARDAT)
+
+# ---- the playground on the card ----
+#
+# Scores and the player's settings stay when the card already has them.
+
+install: all
+	@test -n "$(CARD)" || { echo "usage: make -f Makefile.host install CARD=/Volumes/<card>"; exit 1; }
+	mkdir -p "$(CARD)/NETHACK/save"
+	cp $(DAT)/nhdat $(DAT)/license $(DAT)/symbols "$(CARD)/NETHACK/"
+	test -f "$(CARD)/NETHACK/record" || : > "$(CARD)/NETHACK/record"
+	test -f "$(CARD)/NETHACK/.nethackrc" || cp nethackrc "$(CARD)/NETHACK/.nethackrc"
+
+clean:
+	rm -f $(MAKEDEFS) $(LEVCOMP) $(DGNCOMP) $(DLB) $(HEADERS)
+	cd $(DAT) && rm -f nhdat *.lev dungeon dungeon.pdf $(VARDAT)
+
+.PHONY: all install clean

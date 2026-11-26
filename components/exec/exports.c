@@ -204,6 +204,27 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(memcmp),
   ESP_ELFSYM_EXPORT(strncmp),
   ESP_ELFSYM_EXPORT(strncpy),
+  ESP_ELFSYM_EXPORT(atol),
+  ESP_ELFSYM_EXPORT(sscanf),
+  ESP_ELFSYM_EXPORT(mktime),
+  ESP_ELFSYM_EXPORT(access),
+  ESP_ELFSYM_EXPORT(rename),
+
+  /* stdio on files (FILE *), for programs ported from Unix (NetHack);
+   * these streams are files on the card, not the tty */
+  ESP_ELFSYM_EXPORT(fopen),
+  ESP_ELFSYM_EXPORT(fdopen),
+  ESP_ELFSYM_EXPORT(fclose),
+  ESP_ELFSYM_EXPORT(fread),
+  ESP_ELFSYM_EXPORT(fgets),
+  ESP_ELFSYM_EXPORT(fgetc),
+  ESP_ELFSYM_EXPORT(getc),
+  ESP_ELFSYM_EXPORT(fscanf),
+  ESP_ELFSYM_EXPORT(fseek),
+  ESP_ELFSYM_EXPORT(ftell),
+  ESP_ELFSYM_EXPORT(rewind),
+  ESP_ELFSYM_EXPORT(fflush),
+  ESP_ELFSYM_EXPORT(clearerr),
 
   /* math — basic set (the MK-52) plus the full C99 libm needed by MicroPython */
   ESP_ELFSYM_EXPORT(sin),

@@ -51,6 +51,18 @@ extern "C" {
 /* The program's entry point, as the loader calls it. */
 typedef int (*macjr_main_t)(int argc, char *argv[], macjr_tty_t *tty);
 
+/* A program's task has a 16 KB stack in internal SRAM. One that needs
+ * more says so once, at file level:
+ *
+ *   MACJR_STACK(64 * 1024);
+ *
+ * and gets a stack of that many bytes in PSRAM (a little slower, at most
+ * MACJR_STACK_MAX). The firmware reads the size from the ELF file before
+ * it starts the program: it is the exported constant macjr_stack_size. */
+#define MACJR_STACK_MAX (512 * 1024)
+#define MACJR_STACK(bytes) \
+  __attribute__((visibility("default"))) const unsigned macjr_stack_size = (bytes)
+
 /* The firmware's built-in 8x16 font (bold ASCII + CP866), for programs that
  * draw text on the display HAL themselves: glyph c is macjr_font_builtin_8x16[c],
  * 16 rows of one byte, MSB = leftmost pixel. Draw a glyph at (x, y) with

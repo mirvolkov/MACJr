@@ -1,0 +1,4 @@
+NetHack 3.6 branch NetHack-3.6 23d331a 2026-04-28 from https://github.com/NetHack/NetHack.git
+Removed: win/ ports other than tty (Qt, Qt4, X11, chain, curses, gem, gnome,
+macosx, win32, share), sys/ ports other than unix and share, and the
+sys/share files only those used. MacJr changes are marked MACJR.

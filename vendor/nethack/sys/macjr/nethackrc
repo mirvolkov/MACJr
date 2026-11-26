@@ -1,0 +1,11 @@
+# NetHack settings on MacJr: /sdcard/NETHACK/.nethackrc
+# (the install puts this file there once; edit it on the card)
+#
+# number_pad: the MK-52 digits move (7 8 9 / 4 5 6 / 1 2 3), 5 runs,
+# 0 is the inventory; see sys/macjr/macjrtty.c for the other keys.
+OPTIONS=number_pad:1
+OPTIONS=color
+OPTIONS=time
+OPTIONS=!autopickup
+OPTIONS=!legacy
+OPTIONS=suppress_alert:3.4.3
