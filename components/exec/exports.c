@@ -93,6 +93,7 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(db_create),
   ESP_ELFSYM_EXPORT(db_read),
   ESP_ELFSYM_EXPORT(db_update),
+  ESP_ELFSYM_EXPORT(db_list),
   ESP_ELFSYM_EXPORT(db_listen),
 
   /* the system log (/dev/log: open, read, write, select through the
@@ -147,6 +148,8 @@ const struct esp_elfsym g_exec_exports[] = {
   EXEC_EXPORT_AS(read, exec_read),
   EXEC_EXPORT_AS(write, exec_write),
   ESP_ELFSYM_EXPORT(mkdir),
+  ESP_ELFSYM_EXPORT(rmdir),
+  ESP_ELFSYM_EXPORT(unlink),
   ESP_ELFSYM_EXPORT(fcntl),
   ESP_ELFSYM_EXPORT(stat),
   ESP_ELFSYM_EXPORT(opendir),
@@ -204,6 +207,8 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(memcmp),
   ESP_ELFSYM_EXPORT(strncmp),
   ESP_ELFSYM_EXPORT(strncpy),
+  ESP_ELFSYM_EXPORT(strdup),
+  ESP_ELFSYM_EXPORT(strspn),
 
   /* math — basic set (the MK-52) plus the full C99 libm needed by MicroPython */
   ESP_ELFSYM_EXPORT(sin),

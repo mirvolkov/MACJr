@@ -1,6 +1,7 @@
 #ifndef MACJR_DB_H
 #define MACJR_DB_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #include "esp_err.h"
@@ -29,7 +30,7 @@ extern "C" {
 #define DB_DIR SDCARD_MOUNT_POINT "/DB"
 #define DB_NAME "config" /* file names: at most 8 characters */
 #define DB_SECTOR_SIZE 4096
-#define DB_SECTORS 4
+#define DB_SECTORS 16 /* 64 KB; was 4: FlashDB formats only the new sector files, keys stay */
 #define DB_KEY_MAX 63
 
 /* Create DB_DIR and open the database, creating its files if needed, and
@@ -54,6 +55,14 @@ esp_err_t db_update(const char *key, const char *value);
 
 /* Remove the pair. ESP_ERR_NOT_FOUND if there is no such key. */
 esp_err_t db_delete(const char *key);
+
+/* Call `fn` for each key starting with `prefix` ("" for all), in no
+ * particular order, with its value (terminated). `fn` returns false to
+ * stop. It runs with the database locked: it must not change the
+ * database, and should be quick. The number of keys `fn` was called for,
+ * or -1 (database not open, or no memory). */
+typedef bool (*db_list_fn)(const char *key, const char *value, void *ctx);
+int db_list(const char *prefix, db_list_fn fn, void *ctx);
 
 /*
  * Listening for changes. A listener is a file descriptor on DB_LISTEN_DEV:

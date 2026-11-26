@@ -1,7 +1,9 @@
-RTOS (real time must be kept for SDR if possible)
-- process model, memory paging, signal mechanism (IPC)
+OS:
+- process model, signal mechanism (IPC), resource protection
 - KERNEL - memory/process/fs management
-- unix-like app distribution model (compile, register, open by extension)
+- unix-like src distribution model (compile, register, open by extension)
+- stream redirect model like /dev/uart > /db/log1.txt, or si5351 > /dev/i2c
+- bash/ssh + run wifi as AP 
 
 Extensions:
 - extend external port with SPI
@@ -16,6 +18,7 @@ Apps:
 - graphic plotters, matrix op visualizer? 
 - games? actions, arcades, text strategies
 - CLAUDE aceess (get notification, show messages, get simple feedbacks)
+- vector-like companion app
 
 POSIX sources (cc):
 - tinycc: variadic definitions, float/double

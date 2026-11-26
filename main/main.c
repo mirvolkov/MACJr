@@ -52,8 +52,7 @@ static const char *TAG = "MACJR";
  * cost nothing until asked for. */
 static volatile bool s_wifi_want;
 
-/* Reads /dev/kbrd forever: beeps on every key press and (DEBUG ONLY) logs
- * the key codes. */
+/* Reads /dev/kbrd forever: beeps on every key press. */
 static void kbrd_task(void *arg) {
   int fd = open(KBD_DEV_PATH, O_RDONLY);
   if (fd < 0) {
@@ -71,9 +70,6 @@ static void kbrd_task(void *arg) {
     }
     /* one beep per read: keys pressed in the same instant share it */
     speaker_beep(KEY_BEEP_HZ, KEY_BEEP_MS);
-    for (ssize_t i = 0; i < n; i++) {
-      ESP_LOGI(TAG, "%s: key %u", KBD_DEV_PATH, keys[i]); /* DEBUG ONLY */
-    }
   }
 }
 

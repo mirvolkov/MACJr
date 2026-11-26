@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -238,4 +239,46 @@ esp_err_t db_delete(const char *key) {
     return ESP_ERR_INVALID_STATE;
   }
   return changed(key, unlock(exists(key) ? to_esp(fdb_kv_del(&s_kvdb, key)) : ESP_ERR_NOT_FOUND));
+}
+
+int db_list(const char *prefix, db_list_fn fn, void *ctx) {
+  if (!fn) {
+    return -1;
+  }
+  if (!prefix) {
+    prefix = "";
+  }
+  char *value = malloc(DB_SECTOR_SIZE + 1); /* a value never spans sectors */
+  if (!value) {
+    return -1;
+  }
+  if (!lock()) {
+    free(value);
+    return -1;
+  }
+  size_t plen = strlen(prefix);
+  int n = 0;
+  struct fdb_kv_iterator it;
+  fdb_kv_iterator_init(&s_kvdb, &it);
+  while (fdb_kv_iterate(&s_kvdb, &it)) {
+    fdb_kv_t kv = &it.curr_kv;
+    char key[DB_KEY_MAX + 1];
+    size_t klen = kv->name_len < DB_KEY_MAX ? kv->name_len : DB_KEY_MAX;
+    memcpy(key, kv->name, klen);
+    key[klen] = '\0';
+    if (strncmp(key, prefix, plen) != 0) {
+      continue;
+    }
+    struct fdb_blob blob;
+    fdb_kv_to_blob(kv, fdb_blob_make(&blob, value, DB_SECTOR_SIZE));
+    size_t got = fdb_blob_read((fdb_db_t)&s_kvdb, &blob);
+    value[got] = '\0';
+    n++;
+    if (!fn(key, value, ctx)) {
+      break;
+    }
+  }
+  unlock(ESP_OK);
+  free(value);
+  return n;
 }

@@ -1,6 +1,6 @@
 /*
- * IR_TX.ELF -- IR sender: lists the codes IR_RX saved (IR/CODES.TXT) by
- * number; П→x / x→П move, В↑ sends the selected one. ВП opens a window to
+ * IR_TX.ELF -- IR sender: lists the codes IR_RX saved in the db (keys
+ * "ir.<number>") by number; П→x / x→П move, В↑ sends the selected one. ВП opens a window to
  * type a protocol, address and command and send them. Cx ends it.
  *
  *   ════════════════[IR sender]═════════════
@@ -21,7 +21,9 @@
  *       ║ Sent                       ║
  *       ╚════════════════════════════╝
  *
- * File format: see IR_RX. A number saved twice: its last line counts.
+ * Format: see IR_RX. Codes saved before they moved to the db, in the
+ * file OLD_FILE, are imported once at start (a number the db has already
+ * keeps its code), and the file goes when all of it is in.
  */
 #include <fcntl.h>
 #include <stdarg.h>
@@ -32,6 +34,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "db.h"
 #include "esp_err.h"
 #include "ir_rx.h"
 #include "ir_tx.h"
@@ -41,7 +44,9 @@
 #include "tty/list.h"
 #include "tty/window.h"
 
-#define IR_FILE "/sdcard/IR/CODES.TXT"
+#define IR_KEY   "ir." /* + the number: the db key of a saved code */
+#define OLD_DIR  "/sdcard/IR"
+#define OLD_FILE OLD_DIR "/CODES.TXT"
 
 #define KEY_UP     KEY_MK_P_TO_X   /* П→x */
 #define KEY_DOWN   KEY_MK_X_TO_P   /* x→П */
@@ -61,19 +66,20 @@
 
 #define MAX_CODES 100
 #define RAW_MAX   128
+#define NUM_MAX   999
 #define FILE_MAX  (64 * 1024)
 
 typedef struct {
   int num;
   ir_event_t ev;
-  const char *raw; /* IR_PROTO_UNKNOWN: the durations, in the file text */
+  char *text;      /* the db value, owned */
+  const char *raw; /* IR_PROTO_UNKNOWN: the durations, in `text` */
   unsigned raw_n;
 } code_t;
 
 static macjr_tty_t *s_tty;
 static int s_kbd = -1;
 
-static char *s_text; /* IR_FILE, read whole */
 static code_t s_codes[MAX_CODES];
 static int s_count;
 static const char *s_load_err; /* why the list is empty */
@@ -123,15 +129,11 @@ static bool proto_of(const char *tok, size_t len, ir_proto_t *p) {
   return false;
 }
 
-/* Parse the line at `s` (ends at '\n' or '\0') into `c`. */
-static bool parse(const char *s, code_t *c) {
+/* Parse a code, "<PROTO> ..." as IR_RX saves it (ends at '\n' or '\0'),
+ * into `c`; for a raw code c->raw points into `s`. */
+static bool parse_value(const char *s, code_t *c) {
   char *end;
   memset(c, 0, sizeof(*c));
-  c->num = (int)strtoul(s, &end, 10);
-  if (end == s) {
-    return false;
-  }
-  s = end;
   while (*s == ' ') {
     s++;
   }
@@ -160,53 +162,134 @@ static bool parse(const char *s, code_t *c) {
   return true;
 }
 
-static void load(void) {
+/* The number in a db key IR_KEY "<num>", or -1. */
+static int num_of(const char *key) {
+  const char *digits = key + strlen(IR_KEY);
+  char *end;
+  long num = strtol(digits, &end, 10);
+  return end != digits && *end == '\0' && num >= 0 && num <= NUM_MAX ? (int)num : -1;
+}
+
+static void free_codes(void) {
+  for (int i = 0; i < s_count; i++) {
+    free(s_codes[i].text);
+  }
   s_count = 0;
-  s_load_err = NULL;
-  free(s_text);
-  s_text = NULL;
+}
+
+/* db_list(): a saved code into s_codes, kept in order of number. */
+static bool add_code(const char *key, const char *value, void *ctx) {
+  (void)ctx;
+  int num = num_of(key);
+  if (num < 0) {
+    return true;
+  }
+  char *text = strdup(value);
+  code_t c;
+  if (!text || !parse_value(text, &c)) {
+    free(text);
+    return text != NULL;
+  }
+  if (s_count == MAX_CODES) {
+    free(text);
+    return false;
+  }
+  c.num = num;
+  c.text = text;
+  int i = 0;
+  while (i < s_count && s_codes[i].num < num) {
+    i++;
+  }
+  memmove(&s_codes[i + 1], &s_codes[i], (s_count - i) * sizeof(code_t));
+  s_codes[i] = c;
+  s_count++;
+  return true;
+}
+
+/* db_list(): mark the numbers the db has. */
+static bool mark_num(const char *key, const char *value, void *ctx) {
+  (void)value;
+  int num = num_of(key);
+  if (num >= 0) {
+    ((bool *)ctx)[num] = true;
+  }
+  return true;
+}
+
+/* Move the codes of OLD_FILE (lines "<number> <code>") into the db. A
+ * number the db had before keeps its code; within the file the last line
+ * counts. The file and its directory go once every code is in. */
+static void import_old(void) {
   struct stat st;
-  if (stat(IR_FILE, &st) != 0) {
-    s_load_err = "No codes yet: save some with IR_RX";
+  if (stat(OLD_FILE, &st) != 0) {
     return;
   }
   size_t size = st.st_size < FILE_MAX ? (size_t)st.st_size : FILE_MAX;
-  s_text = malloc(size + 1);
-  int fd = s_text ? open(IR_FILE, O_RDONLY) : -1;
+  char *text = malloc(size + 1);
+  bool *had = calloc(NUM_MAX + 1, sizeof(bool));
+  int fd = text && had ? open(OLD_FILE, O_RDONLY) : -1;
   if (fd < 0) {
-    s_load_err = "Can't read IR/CODES.TXT";
+    free(text);
+    free(had);
     return;
   }
   size_t got = 0;
   ssize_t n;
-  while (got < size && (n = read(fd, s_text + got, size - got)) > 0) {
+  while (got < size && (n = read(fd, text + got, size - got)) > 0) {
     got += n;
   }
   close(fd);
-  s_text[got] = '\0';
+  text[got] = '\0';
+  db_list(IR_KEY, mark_num, had);
 
-  for (const char *p = s_text; *p;) {
+  int moved = 0;
+  bool all_in = true;
+  for (char *p = text; *p;) {
+    char *eol = p + strcspn(p, "\r\n");
+    char keep = *eol;
+    *eol = '\0';
+    char *end;
+    long num = strtol(p, &end, 10);
     code_t c;
-    if (parse(p, &c)) {
-      int i = 0;
-      while (i < s_count && s_codes[i].num < c.num) {
-        i++;
+    if (end != p && num >= 0 && num <= NUM_MAX && parse_value(end, &c) && !had[num]) {
+      char key[16];
+      snprintf(key, sizeof(key), IR_KEY "%ld", num);
+      while (*end == ' ') {
+        end++;
       }
-      if (i < s_count && s_codes[i].num == c.num) {
-        s_codes[i] = c; /* saved again: the later line counts */
-      } else if (s_count < MAX_CODES) {
-        memmove(&s_codes[i + 1], &s_codes[i], (s_count - i) * sizeof(code_t));
-        s_codes[i] = c;
-        s_count++;
+      esp_err_t err = db_update(key, end);
+      if (err == ESP_ERR_NOT_FOUND) {
+        err = db_create(key, end);
+      }
+      if (err == ESP_OK) {
+        moved++;
+      } else {
+        all_in = false;
       }
     }
-    p += strcspn(p, "\n");
-    if (*p) {
-      p++;
-    }
+    *eol = keep;
+    p = eol + strspn(eol, "\r\n");
   }
-  if (s_count == 0) {
-    s_load_err = "No codes in IR/CODES.TXT";
+  free(text);
+  free(had);
+  if (all_in) {
+    unlink(OLD_FILE);
+    unlink(OLD_DIR "/._CODES.TXT"); /* macOS metadata, if a Mac wrote it */
+    rmdir(OLD_DIR); /* only if nothing else is in it */
+    snprintf(s_status, sizeof(s_status), "\x1b[92m%d codes moved to the db", moved);
+  } else {
+    snprintf(s_status, sizeof(s_status), "\x1b[91mIR/CODES.TXT: not all moved");
+  }
+}
+
+static void load(void) {
+  free_codes();
+  s_load_err = NULL;
+  import_old();
+  if (db_list(IR_KEY, add_code, NULL) < 0) {
+    s_load_err = "Can't read the db";
+  } else if (s_count == 0) {
+    s_load_err = "No codes yet: save some with IR_RX";
   }
 }
 
@@ -407,7 +490,6 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
   s_tty = tty;
   s_status[0] = '\0';
   s_manual = false;
-  s_text = NULL;
   macjr_tty_list_init(&s_list, ROW_LIST, 1, COLS, LIST_ROWS, code_item, NULL);
   load();
   macjr_tty_list_set_count(&s_list, s_count);
@@ -441,6 +523,6 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
   if (s_kbd >= 0) {
     close(s_kbd);
   }
-  free(s_text);
+  free_codes();
   return 0;
 }

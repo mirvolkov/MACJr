@@ -21,12 +21,12 @@
  *          ║ Number 12_        ║
  *          ╚═══════════════════╝
  *
- * Codes are appended to IR_FILE as text lines, one per code:
+ * Codes go to the shared db (db.h), one key per code, "ir.<number>":
  *
- *   <number> <PROTO> <addr> <cmd> <ext> <edges>   (NEC SAMSUNG SONY RC5)
- *   <number> RAW <n> <us> <us> ...                (a protocol not decoded)
+ *   ir.12 = <PROTO> <addr> <cmd> <ext> <edges>   (NEC SAMSUNG SONY RC5)
+ *   ir.13 = RAW <n> <us> <us> ...                (a protocol not decoded)
  *
- * Saving a number again adds a new line; the last one counts.
+ * Saving a number again replaces its code.
  */
 #include <fcntl.h>
 #include <stdarg.h>
@@ -34,9 +34,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
-#include <sys/stat.h>
 #include <unistd.h>
 
+#include "db.h"
 #include "esp_err.h"
 #include "ir_rx.h"
 #include "keyboard.h"
@@ -44,8 +44,7 @@
 #include "monitor.h"
 #include "tty/window.h"
 
-#define IR_DIR  "/sdcard/IR"
-#define IR_FILE IR_DIR "/CODES.TXT"
+#define IR_KEY "ir." /* + the number: the db key of a saved code */
 
 #define KEY_SAVE KEY_MK_PP       /* ПП (159) */
 #define KEY_OK   KEY_MK_ENTER    /* В↑ */
@@ -57,7 +56,7 @@
 #define ROW_HINT  15
 #define RAW_MAX   128
 #define NUM_MAX   999
-#define LINE_MAX  (RAW_MAX * 6 + 32)
+#define VALUE_MAX (RAW_MAX * 11 + 32) /* "RAW n" and up to 10 digits per duration */
 
 typedef struct {
   ir_event_t ev;
@@ -176,28 +175,26 @@ static const char *proto_token(ir_proto_t p) {
   }
 }
 
-/* Append `c` as number `num` to IR_FILE. */
-static bool append(int num, const code_t *c) {
-  static char buf[LINE_MAX];
+/* Save `c` as number `num`: the db key IR_KEY "<num>", replaced if there. */
+static esp_err_t store(int num, const code_t *c) {
+  static char value[VALUE_MAX];
   int n;
   if (c->ev.proto == IR_PROTO_UNKNOWN) {
-    n = snprintf(buf, sizeof(buf), "%d RAW %u", num, (unsigned)c->raw_len);
-    for (size_t i = 0; i < c->raw_len && n < (int)sizeof(buf) - 8; i++) {
-      n += snprintf(buf + n, sizeof(buf) - n, " %u", (unsigned)c->raw[i]);
+    n = snprintf(value, sizeof(value), "RAW %u", (unsigned)c->raw_len);
+    for (size_t i = 0; i < c->raw_len && n < (int)sizeof(value) - 12; i++) {
+      n += snprintf(value + n, sizeof(value) - n, " %u", (unsigned)c->raw[i]);
     }
   } else {
-    n = snprintf(buf, sizeof(buf), "%d %s %u %u %u %u", num, proto_token(c->ev.proto), c->ev.addr, c->ev.cmd,
-                 c->ev.ext, c->ev.edges);
+    snprintf(value, sizeof(value), "%s %u %u %u %u", proto_token(c->ev.proto), c->ev.addr, c->ev.cmd, c->ev.ext,
+             c->ev.edges);
   }
-  buf[n++] = '\n';
-  mkdir(IR_DIR, 0777); /* fails if it exists: fine */
-  int fd = open(IR_FILE, O_WRONLY | O_CREAT | O_APPEND, 0666);
-  if (fd < 0) {
-    return false;
+  char key[16];
+  snprintf(key, sizeof(key), IR_KEY "%d", num);
+  esp_err_t err = db_update(key, value);
+  if (err == ESP_ERR_NOT_FOUND) {
+    err = db_create(key, value);
   }
-  bool ok = write(fd, buf, n) == n;
-  close(fd);
-  return ok;
+  return err;
 }
 
 static void open_window(void) {
@@ -218,10 +215,11 @@ static void save(void) {
   int num = atoi(s_num);
   char what[40];
   describe(&s_saving, what, sizeof(what));
-  if (append(num, &s_saving)) {
+  esp_err_t err = store(num, &s_saving);
+  if (err == ESP_OK) {
     snprintf(s_status, sizeof(s_status), "#%d %s", num, what);
   } else {
-    snprintf(s_status, sizeof(s_status), "\x1b[91mcan't write IR/CODES.TXT");
+    snprintf(s_status, sizeof(s_status), "\x1b[91mnot saved: %s", err == ESP_ERR_INVALID_SIZE ? "db full" : "db error");
   }
   s_window = false;
 }
