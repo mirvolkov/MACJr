@@ -1,7 +1,11 @@
-# VM benchmark: the C VM alone vs the assembly fast path (vm_xtensa.S).
-# Every test runs twice, vmasm(False) then vmasm(True); both must give
-# the same result. Then the edge cases of small-int arithmetic, compared
-# the same way. Fits the 40x15 screen.
+# VM benchmark for the assembly fast path (vm_xtensa.S), which is always
+# on. Each test is timed and its result checked against what CPython
+# gives (EXPECT, computed on a PC); then the edge cases of integer
+# arithmetic (small ints, overflow into long ints, mixed types) are
+# checked the same way, by a checksum. Fits the 40x15 screen.
+#
+# Before the fast path became permanent, the same tests ran with it off
+# and on (vmasm()): C 2464 ms, asm 1188 ms in total, 2.07x.
 import time
 
 def t_loop(n):
@@ -88,16 +92,34 @@ def run(f, n):
 
 # ---- edge cases: every op on a set of values, results or exception names
 
+# The small ints are -2**30 .. 2**30-1: the values around the edges, so
+# results spill into long ints. (The bottom one is written as a sum: a
+# build without long ints could not parse the literal -1073741824, which
+# is -(1073741824), one past the top.)
 VALS = (0, 1, -1, 2, -3, 7, -8, 31, 40, 12345, -54321,
-        1073741823, -1073741824, 1073741822, -1073741823, 46340, -46341)
+        1073741823, -1073741823 - 1, 1073741822, -1073741823, 46340, -46341)
 SHIFTS = (0, 1, 5, 29, 30, 31, 32, 40, -1)
 
 def ex(e):
     return type(e).__name__
 
+class Ck:
+    """Count and checksum of the results' text as they come (no list to
+    keep: 4000 results in one list need a 32 KB block of the heap). The
+    same in MicroPython and CPython."""
+    def __init__(self):
+        self.n = 0
+        self.h = 0
+    def add(self, r):
+        h = self.h
+        for c in str(r):
+            h = (h * 31 + ord(c)) & 0x3FFFFFFF
+        self.h = h
+        self.n += 1
+
 def edge():
-    out = []
-    ap = out.append
+    ck = Ck()
+    ap = ck.add
     for a in VALS:
         try:
             ap((-a, ~a, +a, not a, a == 0))
@@ -152,38 +174,31 @@ def edge():
             except Exception as e:
                 r = ex(e)
             ap(r)
-    return out
+    return ck.n, ck.h
+
+# what CPython gives (computed on a PC); edge: (count, checksum)
+EXPECT = {'loop': 60000, 'range': 7642320, 'fib': 2584, 'collatz': 32494, 'gcd': 2999, 'bits': 36656, 'sieve': 2264, 'float': 2871456, 'edge': (4409, 626379344)}
 
 def main():
-    print('test     C ms  asm ms   gain')
-    tc = ta = 0
+    print('test       ms   result')
+    total = 0
     bad = []
     for name, f, n in TESTS:
-        vmasm(False)
-        dc, rc = run(f, n)
-        vmasm(True)
-        da, ra = run(f, n)
-        tc += dc
-        ta += da
-        g = dc / da if da else 0
-        mark = '' if rc == ra else ' BAD'
-        if mark:
+        d, r = run(f, n)
+        total += d
+        ok = EXPECT is None or EXPECT[name] == r
+        if not ok:
             bad.append(name)
-        print('%-7s %6d %7d %5.2fx%s' % (name, dc, da, g, mark))
-    print('%-7s %6d %7d %5.2fx' % ('total', tc, ta, tc / ta if ta else 0))
-    vmasm(False)
-    ec = edge()
-    vmasm(True)
-    ea = edge()
-    diff = [i for i in range(len(ec)) if ec[i] != ea[i]]
-    if diff or len(ec) != len(ea):
-        i = diff[0] if diff else 0
-        print('edge: BAD %d of %d' % (len(diff), len(ec)))
-        print(' #%d C=%s' % (i, str(ec[i])[:30]))
-        print(' asm=%s' % str(ea[i])[:34])
+        print('%-8s %6d   %s' % (name, d, 'ok' if ok else 'BAD %s' % r))
+    print('%-8s %6d' % ('total', total))
+    got = edge()
+    if EXPECT is None or got == EXPECT['edge']:
+        print('edge: OK, %d results' % got[0])
     else:
-        print('edge: OK, %d results' % len(ec))
+        print('edge: BAD %d %08x' % got)
+        bad.append('edge')
     if bad:
         print('BAD:', ' '.join(bad))
+    input('2**100 = %d' % (2 ** 100))  # wait: the navigator would redraw
 
 main()

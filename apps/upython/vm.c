@@ -40,10 +40,9 @@
 // the C loop first hands ip/sp to macjr_vm_fast(), which runs the simple
 // opcodes (locals, small ints, stack shuffles, jumps, small-int
 // arithmetic and compares) and returns at the first one it can't do;
-// the switch below then runs that one opcode. vmasm(False) from Python
-// turns it off, for comparison.
+// the switch below then runs that one opcode. It is always on: the
+// comparison with the C loop alone was made (journey, bench.py history).
 uint64_t macjr_vm_fast(const byte *ip, mp_obj_t *sp, mp_obj_t *fastn, volatile mp_obj_t *pending);
-int macjr_vm_asm = 1;
 
 // *FORMAT-OFF*
 
@@ -333,7 +332,7 @@ outer_dispatch_loop:
             for (;;) {
 dispatch_loop:
                 // MACJr: assembly fast path, see macjr_vm_fast above
-                if (macjr_vm_asm) {
+                {
                     uint64_t r = macjr_vm_fast(ip, sp, fastn, &MP_STATE_THREAD(mp_pending_exception));
                     ip = (const byte *)(uintptr_t)(uint32_t)r;
                     sp = (mp_obj_t *)(uintptr_t)(uint32_t)(r >> 32);

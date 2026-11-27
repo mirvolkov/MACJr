@@ -4,12 +4,14 @@
  *   UPYTHON              REPL (the default)
  *   UPYTHON <file.py>    run the script, then exit
  *
- * The bytecode VM runs its simple opcodes in Xtensa assembly (vm_xtensa.S);
- * vmasm(False) switches back to the C VM alone, for comparison.
+ * The bytecode VM runs its simple opcodes in Xtensa assembly (vm_xtensa.S),
+ * always. Integers are arbitrary precision (MPZ): small ones in the
+ * assembly, the rest in C.
  *
  * The navigator starts it with the script's path when В↑ is pressed on a
  * .py file (main/main.c). A script exits with code 0, or 1 when it ended
- * with an exception (the traceback is printed first).
+ * with an exception (the traceback is printed first, and stays on screen
+ * until a key is pressed). input([prompt]) reads a line on the keyboard.
  *
  * In the REPL a line that opens a block (`for ...:`) continues on "..."
  * lines until an empty one; an expression's value is printed, as in any
@@ -38,7 +40,7 @@
 #include "py/runtime.h"
 #include "py/stackctrl.h"
 
-#define GC_HEAP_SIZE  (256 * 1024) /* try first; fall back to 64 KB */
+#define GC_HEAP_SIZE  (1024 * 1024) /* PSRAM; try first, fall back to 64 KB */
 #define GC_HEAP_MIN   (64 * 1024)
 #define REPL_LINE_MAX 256
 #define REPL_BLOCK_MAX (8 * 1024)  /* one REPL statement, "..." lines included */
@@ -125,6 +127,13 @@ static int run_file(const char *path) {
     }
     bool ok = exec_src(src, len, name, MP_PARSE_FILE_INPUT);
     free(src);
+    if (!ok) {
+        /* the traceback stays on screen until a key: the navigator would
+           redraw over it at once */
+        twrite("\x1b[90many key: exit\x1b[0m");
+        flush();
+        sys_getkey();
+    }
     return ok ? 0 : 1;
 }
 
@@ -167,6 +176,27 @@ static bool read_line(char *buf, size_t size) {
     }
 }
 
+/* ---------- input() ---------- */
+
+/* input([prompt]) -> the line typed, without the end; '' for Cx on an
+ * empty line. The REPL's line reader: echo, В↑ ends it, Cx deletes. A
+ * global of __main__ (MicroPython's own input() needs its readline
+ * library, which the embed package doesn't have). */
+static mp_obj_t input_fn(size_t n_args, const mp_obj_t *args) {
+    if (n_args > 0) {
+        twrite(mp_obj_str_get_str(args[0]));
+        flush();
+    }
+    char line[REPL_LINE_MAX];
+    if (!read_line(line, sizeof(line))) {
+        twrite("\r\n");
+        flush();
+        line[0] = '\0';
+    }
+    return mp_obj_new_str(line, strlen(line));
+}
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(input_obj, 0, 1, input_fn);
+
 static void run_repl(void) {
     macjr_tty_header(s_tty, "MicroPython");
     twrite("\x1b[90mCx on an empty line: exit\x1b[0m\r\n");
@@ -202,22 +232,6 @@ static void run_repl(void) {
     }
 }
 
-/* ---------- vmasm() ---------- */
-
-/* vmasm() -> whether the VM's assembly fast path (vm_xtensa.S) is on;
- * vmasm(x) turns it on or off and returns the previous state. A global
- * of __main__, for benchmarks (bench.py). */
-extern int macjr_vm_asm; /* vm.c */
-
-static mp_obj_t vmasm_fn(size_t n_args, const mp_obj_t *args) {
-    bool prev = macjr_vm_asm != 0;
-    if (n_args > 0) {
-        macjr_vm_asm = mp_obj_is_true(args[0]);
-    }
-    return mp_obj_new_bool(prev);
-}
-static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(vmasm_obj, 0, 1, vmasm_fn);
-
 /* ---------- entry point ---------- */
 
 int main(int argc, char *argv[], macjr_tty_t *tty) {
@@ -239,7 +253,7 @@ int main(int argc, char *argv[], macjr_tty_t *tty) {
     int stack_top;
     mp_embed_init(heap, heap_size, &stack_top);
     mp_stack_set_limit(STACK_LIMIT); /* deep recursion: RuntimeError, not a crash */
-    mp_store_global(qstr_from_str("vmasm"), MP_OBJ_FROM_PTR(&vmasm_obj));
+    mp_store_global(qstr_from_str("input"), MP_OBJ_FROM_PTR(&input_obj));
 
     int status = 0;
     if (argc > 1) {

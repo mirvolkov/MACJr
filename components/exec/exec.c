@@ -10,7 +10,9 @@
  * the sys_* calls here and the firmware functions listed in exports.c,
  * looked up before the loader's libc table. exec_run() runs a program in
  * the caller's task, exec_spawn() in its own task on CPU1; either way
- * sys_exit() gets back out of it with longjmp().
+ * sys_exit() gets back out of it with longjmp(). The task of
+ * exec_spawn() has EXEC_STACK_SIZE bytes of internal SRAM, or the bigger
+ * stack the program declares (MACJR_STACK in macjr.h), in PSRAM.
  *
  * Standard streams: descriptors 0, 1 and 2 of a program are its tty, one
  * descriptor of /dev/tty (ttydev.c) opened for it, so write(1, ...) and
@@ -50,6 +52,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
 #include "private/elf_symbol.h"
 #include "db.h"
 #include "logdev.h"
@@ -405,6 +408,64 @@ static esp_err_t read_file(const char *path, uint8_t **out, size_t *out_size) {
   return ESP_OK;
 }
 
+/* ---- the program's stack ---------------------------------------------- */
+
+#define SHT_DYNSYM_   11 /* section type of .dynsym */
+#define STACK_SYMBOL  "macjr_stack_size"
+
+static bool read_at(FILE *f, long offset, void *buf, size_t len) {
+  return fseek(f, offset, SEEK_SET) == 0 && fread(buf, 1, len, f) == len;
+}
+
+/* The stack size the program at `path` declares with MACJR_STACK()
+ * (macjr.h): the value of its exported constant macjr_stack_size, found
+ * through the file's section headers and .dynsym before the program is
+ * loaded, since its task (and stack) comes first. 0 if it declares none. */
+static unsigned declared_stack(const char *path) {
+  FILE *f = fopen(path, "rb");
+  if (!f) {
+    return 0;
+  }
+  unsigned stack = 0;
+  elf32_hdr_t eh;
+  elf32_shdr_t dynsym = {0}, dynstr, sh;
+  if (!read_at(f, 0, &eh, sizeof(eh)) || memcmp(eh.ident, "\x7f" "ELF", 4) != 0 ||
+      eh.shentsize != sizeof(elf32_shdr_t)) {
+    goto done;
+  }
+  for (unsigned i = 0; i < eh.shnum && dynsym.type != SHT_DYNSYM_; i++) {
+    if (!read_at(f, eh.shoff + i * sizeof(sh), &dynsym, sizeof(dynsym))) {
+      goto done;
+    }
+  }
+  if (dynsym.type != SHT_DYNSYM_ || dynsym.link >= eh.shnum ||
+      !read_at(f, eh.shoff + dynsym.link * sizeof(sh), &dynstr, sizeof(dynstr))) {
+    goto done;
+  }
+  for (Elf32_Word at = 0; at + sizeof(elf32_sym_t) <= dynsym.size; at += sizeof(elf32_sym_t)) {
+    elf32_sym_t sym;
+    char name[sizeof(STACK_SYMBOL)];
+    if (!read_at(f, dynsym.offset + at, &sym, sizeof(sym))) {
+      break;
+    }
+    if (sym.size != sizeof(stack) || sym.shndx == 0 || sym.shndx >= eh.shnum || sym.name >= dynstr.size ||
+        !read_at(f, dynstr.offset + sym.name, name, sizeof(name)) || memcmp(name, STACK_SYMBOL, sizeof(name)) != 0) {
+      continue;
+    }
+    /* the constant's bytes: its section's file offset + its place in it */
+    if (read_at(f, eh.shoff + sym.shndx * sizeof(sh), &sh, sizeof(sh)) && sym.value >= sh.addr &&
+        sym.value - sh.addr + sizeof(stack) <= sh.size) {
+      if (!read_at(f, sh.offset + (sym.value - sh.addr), &stack, sizeof(stack))) {
+        stack = 0;
+      }
+    }
+    break;
+  }
+done:
+  fclose(f);
+  return stack;
+}
+
 /* Undo what the program may have left behind: descriptors, its keyboard
  * queue, callbacks into its code (which may be about to go), USB (back to
  * its default mode) and the SD card, in that order: the card comes back
@@ -498,7 +559,16 @@ typedef struct {
   int status;
   esp_err_t ret;
   TaskHandle_t waiter;
+  bool psram_stack; /* its task was made with ...WithCaps(): delete it so */
 } spawn_job_t;
+
+static void delete_task(TaskHandle_t task, const spawn_job_t *job) {
+  if (job->psram_stack) {
+    vTaskDeleteWithCaps(task);
+  } else {
+    vTaskDelete(task);
+  }
+}
 
 static void spawn_task(void *arg) {
   spawn_job_t *job = arg;
@@ -519,7 +589,7 @@ static void spawn_task(void *arg) {
 static void force_kill(TaskHandle_t task, spawn_job_t *job) {
   vTaskSuspend(task);
   if (ulTaskNotifyTake(pdTRUE, 0)) {
-    vTaskDelete(task); /* it ended after all */
+    delete_task(task, job); /* it ended after all */
     return;
   }
   ESP_LOGW(TAG, "program doesn't stop: deleting its task");
@@ -527,7 +597,7 @@ static void force_kill(TaskHandle_t task, spawn_job_t *job) {
     esp_elf_deinit(s_elf); /* frees its PSRAM; `elf` lives on that task's stack */
     s_elf = NULL;
   }
-  vTaskDelete(task);
+  delete_task(task, job);
   program_cleanup();
   job->status = EXEC_KILLED;
   job->ret = ESP_OK;
@@ -556,9 +626,23 @@ static esp_err_t spawn(macjr_tty_t *tty, const char *path, macjr_main_t entry, i
   if (dot && dot != name) {
     *dot = '\0';
   }
+  /* its stack: EXEC_STACK_SIZE in internal SRAM, or a bigger one it
+   * declares (MACJR_STACK) in PSRAM */
+  unsigned stack = path ? declared_stack(path) : 0;
+  if (stack > MACJR_STACK_MAX) {
+    stack = MACJR_STACK_MAX;
+  }
+  job.psram_stack = stack > EXEC_STACK_SIZE;
+  if (job.psram_stack) {
+    ESP_LOGI(TAG, "%s: %u-byte stack in PSRAM", name, stack);
+  }
   TaskHandle_t task;
-  if (xTaskCreatePinnedToCore(spawn_task, name, EXEC_STACK_SIZE, &job, EXEC_PRIORITY, &task, EXEC_CORE) !=
-      pdPASS) {
+  BaseType_t made = job.psram_stack
+                      ? xTaskCreatePinnedToCoreWithCaps(spawn_task, name, stack, &job, EXEC_PRIORITY, &task, EXEC_CORE,
+                                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+                      : xTaskCreatePinnedToCore(spawn_task, name, EXEC_STACK_SIZE, &job, EXEC_PRIORITY, &task,
+                                                EXEC_CORE);
+  if (made != pdPASS) {
     if (kbd >= 0) {
       close(kbd);
     }
@@ -567,7 +651,7 @@ static esp_err_t spawn(macjr_tty_t *tty, const char *path, macjr_main_t entry, i
   int64_t kill_us = 0; /* when the kill was asked for, 0 = not yet */
   for (;;) { /* job lives on this stack until the program ends */
     if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(KILL_POLL_MS))) {
-      vTaskDelete(task);
+      delete_task(task, &job);
       break;
     }
     uint8_t key;

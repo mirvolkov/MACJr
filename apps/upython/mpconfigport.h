@@ -31,6 +31,12 @@
 /* f-strings: f'{x:.4f}' (off at the BASIC level). */
 #define MICROPY_PY_FSTRINGS             (1)
 
+/* Integers of any size (2**100, factorials): MicroPython's own MPZ. A
+ * result that leaves the small-int range (31 bits) becomes a long int in
+ * C; the assembly fast path (vm_xtensa.S) does small ints only and hands
+ * such results back. */
+#define MICROPY_LONGINT_IMPL            (MICROPY_LONGINT_IMPL_MPZ)
+
 /* Double-precision float — matches the MK-52's 8-digit BCD mantissa. */
 #define MICROPY_FLOAT_IMPL              (MICROPY_FLOAT_IMPL_DOUBLE)
 
