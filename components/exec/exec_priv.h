@@ -8,4 +8,7 @@
  * waiting and not `block`, -EPERM outside the program's task. */
 int exec_tty_key(bool block);
 
+/* Free the hardware the program left taken (exec_hw.c). */
+void exec_hw_release(void);
+
 #endif

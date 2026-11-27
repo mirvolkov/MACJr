@@ -40,4 +40,16 @@ int exec_putchar(int c);
  * back (filesystem, db) when the program ends, however it ends. */
 esp_err_t exec_sdcard_open_raw(sdmmc_card_t **out);
 
+/* Hardware a program takes (exec_hw.c): the same calls, noting the ADC
+ * units, calibrations and PWM channels, which are freed or stopped when
+ * the program ends, however it ends. */
+#include "driver/ledc.h"
+#include "esp_adc/adc_cali_scheme.h"
+#include "esp_adc/adc_oneshot.h"
+esp_err_t exec_adc_oneshot_new_unit(const adc_oneshot_unit_init_cfg_t *cfg, adc_oneshot_unit_handle_t *ret);
+esp_err_t exec_adc_oneshot_del_unit(adc_oneshot_unit_handle_t handle);
+esp_err_t exec_adc_cali_create_scheme_curve_fitting(const adc_cali_curve_fitting_config_t *cfg,
+                                                    adc_cali_handle_t *ret);
+esp_err_t exec_ledc_channel_config(const ledc_channel_config_t *cfg);
+
 #endif

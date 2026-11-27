@@ -1,6 +1,7 @@
 # Generate the micropython_embed/ source package from the vendor submodule.
 #
-# Run once (or after updating the submodule):
+# Run once (or after updating the submodule, or after a change in
+# mpconfigport.h: the string table depends on the features that are on):
 #
 #   cd apps/upython
 #   make -f Makefile.embed
@@ -8,29 +9,69 @@
 # Output: micropython_embed/ — ready-to-compile .c/.h files.
 # That directory is git-ignored; the main apps/Makefile compiles it.
 #
-# Requires: Python 3 and a host C compiler (defaults to cc).
+# Requires: Python 3, the Xtensa toolchain and a firmware build (../../build):
+# the qstr scan preprocesses the sources with the cross compiler and the
+# firmware's flags, since the machine module includes ESP-IDF headers.
 
 MICROPYTHON_TOP ?= ../../vendor/micropython
 PACKAGE_DIR     := micropython_embed
 BUILD           := build-embed
 
-# Host tools for the generation step (Python scripts + C preprocessing).
-# The resulting .c files are cross-compiled by apps/Makefile.
-CC     ?= cc
 PYTHON ?= python3
+# The cross compiler, as for the programs; the firmware's include paths and
+# defines (its compile_commands.json, as apps/Makefile reads them)
+CROSS_COMPILE := xtensa-esp32s3-elf-
+FW_FLAGS := $(shell $(PYTHON) ../tools/appflags.py ../../build/compile_commands.json)
+CFLAGS   += $(FW_FLAGS) -Iidf6
 
 # extmod modules to add: the embed package takes only py/. They go into
 # the qstr scan here (before embed.mk reads SRC_QSTR) and are copied into
 # micropython_embed/extmod after it is generated.
-EMBED_EXTMOD := modtime
+EMBED_EXTMOD := modtime modmachine machine_pwm machine_adc machine_adc_block machine_i2c \
+                machine_spi machine_signal machine_pulse machine_mem \
+                machine_pinbase virtpin
 
 SRC_QSTR += $(addprefix extmod/,$(addsuffix .c,$(EMBED_EXTMOD)))
 
+# The machine module's ESP32 code, from MicroPython's own esp32 port: used
+# as it is (machine_pwm.c and machine_adc.c through the extmod files'
+# INCLUDEFILE, adc.c on its own), except the Pin class, upython/machine_pin.c.
+ESP32_PORT  := ports/esp32
+ESP32_FILES := machine_pin.h modmachine.h machine_pwm.c machine_adc.c machine_adc_block.c adc.c adc.h
+SRC_QSTR    += $(ESP32_PORT)/adc.c machine_pin.c
+
+# SoftSPI's bit-banging is in MicroPython's drivers/bus (extmod/modmachine.h
+# includes drivers/bus/spi.h)
+DRIVERS_BUS := spi.h softspi.c
+SRC_QSTR    += drivers/bus/softspi.c
+
+# The pin table, by the esp32 port's generator: all 55 GPIOs, of which
+# machine_pin.h's MICROPY_HW_ENABLE_GPIOn (flash, PSRAM and USB pins off)
+# keep the ones this board has. No board names (no pins.csv).
+PINS_SRC := $(BUILD)/pins.c
+PINS_HDR := $(BUILD)/genhdr/pins.h
+QSTR_GLOBAL_REQUIREMENTS += $(PINS_HDR)
+
 include $(MICROPYTHON_TOP)/ports/embed/embed.mk
+
+$(PINS_HDR) $(PINS_SRC): $(TOP)/$(ESP32_PORT)/boards/make-pins.py $(TOP)/$(ESP32_PORT)/boards/pins_prefix.c
+	$(Q)$(MKDIR) -p $(BUILD)/genhdr
+	$(Q)$(PYTHON) $(TOP)/$(ESP32_PORT)/boards/make-pins.py \
+		--prefix $(TOP)/$(ESP32_PORT)/boards/pins_prefix.c \
+		--output-source $(PINS_SRC) --output-header $(PINS_HDR)
 
 all: embed-extmod
 
 .PHONY: embed-extmod
-embed-extmod: micropython-embed-package
+embed-extmod: micropython-embed-package $(PINS_SRC)
 	$(ECHO) "- extmod: $(EMBED_EXTMOD)"
-	$(Q)$(CP) $(foreach m,$(EMBED_EXTMOD),$(TOP)/extmod/$(m).c $(TOP)/extmod/$(m).h) $(PACKAGE_DIR)/extmod
+	$(Q)$(CP) $(wildcard $(foreach m,$(EMBED_EXTMOD),$(TOP)/extmod/$(m).c $(TOP)/extmod/$(m).h)) \
+		$(TOP)/extmod/virtpin.h $(PACKAGE_DIR)/extmod
+	$(ECHO) "- $(ESP32_PORT): $(ESP32_FILES) pins.c"
+	$(Q)$(MKDIR) -p $(PACKAGE_DIR)/$(ESP32_PORT)
+	$(Q)$(CP) $(addprefix $(TOP)/$(ESP32_PORT)/,$(ESP32_FILES)) $(PINS_SRC) $(PACKAGE_DIR)/$(ESP32_PORT)
+	$(Q)$(CP) $(PINS_HDR) $(PACKAGE_DIR)/genhdr
+	$(Q)$(CP) $(TOP)/shared/runtime/pyexec.h $(PACKAGE_DIR)/shared/runtime # modmachine.c includes it
+	$(ECHO) "- drivers/bus: $(DRIVERS_BUS)"
+	$(Q)$(MKDIR) -p $(PACKAGE_DIR)/drivers/bus
+	$(Q)$(CP) $(addprefix $(TOP)/drivers/bus/,$(DRIVERS_BUS)) $(PACKAGE_DIR)/drivers/bus

@@ -472,6 +472,7 @@ done:
  * only once the host can't reach it. */
 static void program_cleanup(void) {
   fds_close_all();
+  exec_hw_release(); /* ADC units, PWM channels */
   if (s_std >= 0) {
     close(s_std);
     s_std = -1;

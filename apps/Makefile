@@ -113,28 +113,47 @@ $(OUT)/%.ELF: $$(call app_objs,$$*) $(LIBGCC) $(EXPORTS)
 # ---- upython: MicroPython REPL ----
 #
 # The embed package (micropython_embed/) is compiled with its own flags:
-#   - no firmware defines (avoid ESP-IDF macro clashes with C99 MicroPython)
+#   - GNU C99 (ESP-IDF headers use asm), and the firmware's include paths and defines only after the
+#     package's own (the machine module and mphalport.h use ESP-IDF
+#     headers; upython/idf6 holds paths ESP-IDF 6 moved)
 #   - -fno-math-errno so libm never touches errno
 #   - warnings relaxed (upstream code has intentional patterns)
 #
 # The app glue (main.c, mphalport.c) uses the standard firmware CFLAGS.
 
-EMBED_CFLAGS := -std=c99 -O2 \
+EMBED_CFLAGS := -std=gnu99 -O2 \
   -Wall -Wno-unused-variable -Wno-sign-compare \
   -Wno-missing-field-initializers -Wno-unused-function \
   -ffunction-sections -fdata-sections -fvisibility=hidden -fPIC \
   -fno-math-errno \
   -I upython \
   -I $(EMBED_DIR) \
-  -I $(EMBED_DIR)/port
+  -I $(EMBED_DIR)/port \
+  -I upython/idf6 \
+  $(filter -I% -D% '-D% @%,$(FW_FLAGS))
 
 UPHY_SRCS  := upython/main.c upython/mphalport.c
 UPHY_OBJS  := $(patsubst %.c,$(OUT)/obj/%.o,$(UPHY_SRCS))
 # port/mphalport.c is the package's printf stub; upython/mphalport.c
 # replaces it with the tty. py/vm.c is replaced by upython/vm.c, the same
 # file with a call into the assembly fast path (upython/vm_xtensa.S).
-EMBED_SRCS := $(filter-out $(EMBED_DIR)/port/mphalport.c $(EMBED_DIR)/py/vm.c,$(wildcard $(EMBED_DIR)/*/*.c $(EMBED_DIR)/*/*/*.c))
-EMBED_OBJS := $(patsubst %.c,$(OUT)/obj/%.o,$(EMBED_SRCS)) $(OUT)/obj/upython/vm.o $(OUT)/obj/upython/vm_xtensa.o
+# machine: ports/esp32/machine_pwm.c, machine_adc.c and machine_adc_block.c
+# are compiled inside the extmod files of the same names (their
+# INCLUDEFILE); Pin is
+# upython/machine_pin.c (the esp32 port's, without irq for now).
+EMBED_SRCS := $(filter-out $(EMBED_DIR)/port/mphalport.c $(EMBED_DIR)/py/vm.c \
+                $(EMBED_DIR)/ports/esp32/machine_pwm.c $(EMBED_DIR)/ports/esp32/machine_adc.c \
+                $(EMBED_DIR)/ports/esp32/machine_adc_block.c, \
+                $(wildcard $(EMBED_DIR)/*/*.c $(EMBED_DIR)/*/*/*.c))
+EMBED_OBJS := $(patsubst %.c,$(OUT)/obj/%.o,$(EMBED_SRCS)) $(OUT)/obj/upython/vm.o $(OUT)/obj/upython/vm_xtensa.o \
+              $(OUT)/obj/upython/machine_pin.o
+
+$(OUT)/obj/upython/machine_pin.o: upython/machine_pin.c $(EMBED_SENTINEL)
+	@mkdir -p $(dir $@)
+	$(CC) $(EMBED_CFLAGS) -c $< -o $@
+
+# extmod/modmachine.c includes upython/modmachine_port.c
+$(OUT)/obj/upython/micropython_embed/extmod/modmachine.o: upython/modmachine_port.c
 
 # The VM with the assembly fast path: package flags, like the py/vm.c it replaces
 $(OUT)/obj/upython/vm.o: upython/vm.c $(EMBED_SENTINEL)

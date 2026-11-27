@@ -39,6 +39,16 @@ extern long long __ashrdi3(long long, int);
 extern long long __lshrdi3(long long, int);
 #include "esp_flash.h"
 #include "esp_log.h"
+/* upython's machine module: Pin, PWM, ADC (MicroPython's esp32 port code) */
+#include "driver/gpio.h"
+#include "driver/ledc.h"
+#include "driver/rtc_io.h"
+#include "esp_adc/adc_cali_scheme.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_clk_tree.h"
+#include "esp_rom_gpio.h"
+#include "esp_rom_sys.h"
+#include "hal/ledc_periph.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -246,6 +256,48 @@ const struct esp_elfsym g_exec_exports[] = {
   ESP_ELFSYM_EXPORT(ldexp),
   ESP_ELFSYM_EXPORT(copysign),
   ESP_ELFSYM_EXPORT(hypot),
+
+  /* the hardware for upython's machine module (Pin, PWM, ADC): the ESP-IDF
+   * calls MicroPython's esp32 port makes, which it runs as written; what a
+   * program takes (ADC units, PWM channels) through exec_hw.c, which gives
+   * it back when the program ends */
+  ESP_ELFSYM_EXPORT(gpio_get_io_config),
+  ESP_ELFSYM_EXPORT(gpio_get_level),
+  ESP_ELFSYM_EXPORT(gpio_set_level),
+  ESP_ELFSYM_EXPORT(gpio_set_direction),
+  ESP_ELFSYM_EXPORT(gpio_set_drive_capability),
+  ESP_ELFSYM_EXPORT(gpio_pullup_en),
+  ESP_ELFSYM_EXPORT(gpio_pullup_dis),
+  ESP_ELFSYM_EXPORT(gpio_pulldown_en),
+  ESP_ELFSYM_EXPORT(gpio_pulldown_dis),
+  ESP_ELFSYM_EXPORT(gpio_hold_en),
+  ESP_ELFSYM_EXPORT(gpio_hold_dis),
+  ESP_ELFSYM_EXPORT(gpio_sleep_sel_en),
+  ESP_ELFSYM_EXPORT(gpio_sleep_sel_dis),
+  ESP_ELFSYM_EXPORT(rtc_gpio_is_valid_gpio),
+  ESP_ELFSYM_EXPORT(rtc_gpio_deinit),
+  ESP_ELFSYM_EXPORT(esp_rom_gpio_pad_select_gpio),
+  ESP_ELFSYM_EXPORT(esp_rom_gpio_connect_out_signal),
+  ESP_ELFSYM_EXPORT(esp_rom_delay_us),
+  ESP_ELFSYM_EXPORT(esp_clk_tree_src_get_freq_hz),
+  ESP_ELFSYM_EXPORT(ledc_timer_config),
+  ESP_ELFSYM_EXPORT(ledc_timer_pause),
+  ESP_ELFSYM_EXPORT(ledc_timer_rst),
+  EXEC_EXPORT_AS(ledc_channel_config, exec_ledc_channel_config), /* stopped at the end */
+  ESP_ELFSYM_EXPORT(ledc_find_suitable_duty_resolution),
+  ESP_ELFSYM_EXPORT(ledc_get_duty),
+  ESP_ELFSYM_EXPORT(ledc_set_duty),
+  ESP_ELFSYM_EXPORT(ledc_update_duty),
+  ESP_ELFSYM_EXPORT(ledc_get_freq),
+  ESP_ELFSYM_EXPORT(ledc_set_freq),
+  ESP_ELFSYM_EXPORT(ledc_stop),
+  ESP_ELFSYM_EXPORT(ledc_periph_signal), /* data: the LEDC output signals */
+  EXEC_EXPORT_AS(adc_oneshot_new_unit, exec_adc_oneshot_new_unit), /* freed at the end */
+  EXEC_EXPORT_AS(adc_oneshot_del_unit, exec_adc_oneshot_del_unit),
+  ESP_ELFSYM_EXPORT(adc_oneshot_config_channel),
+  ESP_ELFSYM_EXPORT(adc_oneshot_read),
+  EXEC_EXPORT_AS(adc_cali_create_scheme_curve_fitting, exec_adc_cali_create_scheme_curve_fitting),
+  ESP_ELFSYM_EXPORT(adc_cali_raw_to_voltage),
 
   ESP_ELFSYM_END,
 };

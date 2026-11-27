@@ -190,3 +190,27 @@ mp_lexer_t *mp_lexer_new_from_file(qstr filename) {
     (void)filename;
     mp_raise_OSError(MP_ENOENT);
 }
+
+/* ---------- check_esp_err ----------
+ * As in MicroPython's esp32 port: an ESP-IDF error becomes OSError(errno,
+ * name), with the common codes mapped to their POSIX numbers. */
+
+#include "py/mperrno.h"
+#include "esp_err.h"
+
+void check_esp_err_(esp_err_t code) {
+    if (code == ESP_OK) {
+        return;
+    }
+    mp_int_t pcode = -code;
+    switch (code) {
+    case ESP_ERR_NO_MEM:        pcode = MP_ENOMEM; break;
+    case ESP_ERR_TIMEOUT:       pcode = MP_ETIMEDOUT; break;
+    case ESP_ERR_NOT_SUPPORTED: pcode = MP_EOPNOTSUPP; break;
+    default: break;
+    }
+    const char *name = esp_err_to_name(code);
+    mp_obj_t args[2] = {MP_OBJ_NEW_SMALL_INT(pcode), mp_obj_new_str(name, strlen(name))};
+    nlr_raise(mp_obj_new_exception_args(&mp_type_OSError, 2, args));
+}
+

@@ -7,6 +7,13 @@
 
 #include <stdint.h>
 #include <alloca.h>
+/* ESP_IDF_VERSION, which the esp32 port's machine code tests */
+#include "esp_idf_version.h"
+/* ESP-IDF 6 dropped the old name of the 12 dB ADC attenuation (it was an
+ * alias, same value), which the esp32 port's ADC code still uses. */
+#if ESP_IDF_VERSION_MAJOR >= 6
+#define ADC_ATTEN_DB_11 ADC_ATTEN_DB_12
+#endif
 
 /* Our HAL header (mphalport.h lives next to this file). */
 #define MICROPY_MPHALPORT_H "mphalport.h"
@@ -67,6 +74,34 @@
 #define MICROPY_PY_SYS_STDOUT           (0)
 #define MICROPY_PY_SYS_STDERR           (0)
 #define MICROPY_PY_SYS_EXC_INFO         (0)
+
+/* machine: the ESP32 port's own Pin, PWM (LEDC) and ADC code, and the
+ * portable SoftI2C, SoftSPI, Signal, time_pulse_us and mem8/16/32. The
+ * settings are the esp32 port's (ports/esp32/mpconfigport.h). */
+#define MICROPY_PY_MACHINE              (1)
+#define MICROPY_PY_MACHINE_INCLUDEFILE  "modmachine_port.c"
+#define MICROPY_PY_MACHINE_PIN_MAKE_NEW mp_pin_make_new
+#define MICROPY_PY_MACHINE_PWM          (1)
+#define MICROPY_PY_MACHINE_PWM_DUTY     (1)
+#define MICROPY_PY_MACHINE_PWM_INCLUDEFILE "ports/esp32/machine_pwm.c"
+#define MICROPY_PY_MACHINE_ADC          (1)
+#define MICROPY_PY_MACHINE_ADC_INCLUDEFILE "ports/esp32/machine_adc.c"
+#define MICROPY_PY_MACHINE_ADC_ATTEN_WIDTH (1)
+#define MICROPY_PY_MACHINE_ADC_INIT     (1)
+#define MICROPY_PY_MACHINE_ADC_DEINIT   (1)
+#define MICROPY_PY_MACHINE_ADC_READ     (1)
+#define MICROPY_PY_MACHINE_ADC_READ_UV  (1)
+#define MICROPY_PY_MACHINE_ADC_BLOCK    (1) /* the ADC code's units live here */
+#define MICROPY_PY_MACHINE_ADC_BLOCK_INCLUDEFILE "ports/esp32/machine_adc_block.c"
+#define MICROPY_PY_MACHINE_SOFTI2C      (1)
+#define MICROPY_PY_MACHINE_SOFTSPI      (1)
+#define MICROPY_PY_MACHINE_SIGNAL       (1)
+#define MICROPY_PY_MACHINE_PULSE        (1)
+#define MICROPY_PY_MACHINE_MEMX         (1)
+#define MICROPY_PY_MACHINE_PIN_BASE     (1)
+/* machine_pin.h's pin table leaves out GPIO 19/20 when the board uses USB
+ * (an esp32-port board setting): this one does, for the console and USB. */
+#define CONFIG_USB_CDC_ENABLED          (1)
 
 /* Keep binary size reasonable. */
 #define MICROPY_PY_BUILTINS_STR_UNICODE (0)
